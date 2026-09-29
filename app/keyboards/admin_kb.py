@@ -7,6 +7,7 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="ad:users")],
         [InlineKeyboardButton(text="📦 E'lonlar", callback_data="ad:listings"),
          InlineKeyboardButton(text="💳 To'lovlar", callback_data="ad:payments")],
+        [InlineKeyboardButton(text="💳 Kartalar", callback_data="ad:cards")],
         [InlineKeyboardButton(text="💰 Balanslar", callback_data="ad:balances"),
          InlineKeyboardButton(text="📣 Xabar yuborish", callback_data="ad:broadcast")],
         [InlineKeyboardButton(text="💵 Narxlar", callback_data="ad:pricing"),
@@ -134,4 +135,11 @@ def admin_confirm_kb(action: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"adconfirm:{action}"),
          InlineKeyboardButton(text="❌ Bekor", callback_data="ad:panel")]
+    ])
+
+def admin_cards_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Karta qo'shish", callback_data="adcard:add")],
+        [InlineKeyboardButton(text="📋 Kartalar ro'yxati", callback_data="adcard:list")],
+        [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="ad:panel")],
     ])

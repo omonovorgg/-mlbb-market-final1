@@ -11,6 +11,13 @@ from app.services.transaction_service import transaction_service
 
 
 class PaymentService:
+    async def get_payment_context(self, external_id: str):
+        async with async_session() as session:
+            p = await PaymentRepo.get_by_ext(session, external_id)
+            if not p:
+                return None
+            return {"user_id": p.user_id, "amount": p.amount, "provider": p.provider, "status": p.status}
+
     async def create_payment_intent(self, user_id: int, amount: int, provider: str = "manual") -> str:
         ext_id = f"pay_{uuid.uuid4().hex[:16]}"
         async with async_session() as session:

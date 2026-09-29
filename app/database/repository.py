@@ -4,7 +4,7 @@ from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import (
     User, Listing, ListingMedia, Transaction, Payment, Admin,
-    AdminLog, Setting, ChannelPost, Report, PromoCode
+    AdminLog, Setting, ChannelPost, Report, PromoCode, Card
 )
 
 
@@ -309,6 +309,46 @@ class SettingRepo:
     async def all(session: AsyncSession):
         r = await session.execute(select(Setting))
         return {s.key: s.value for s in r.scalars().all()}
+
+
+class CardRepo:
+    @staticmethod
+    async def all(session: AsyncSession, active_only: bool = False):
+        q = select(Card).order_by(desc(Card.created_at))
+        if active_only:
+            q = q.where(Card.active == True)
+        r = await session.execute(q)
+        return r.scalars().all()
+
+    @staticmethod
+    async def get(session: AsyncSession, card_id: int) -> Optional[Card]:
+        return await session.get(Card, card_id)
+
+    @staticmethod
+    async def create(session: AsyncSession, card_number: str, holder_name: str, bank_name: str = "") -> Card:
+        c = Card(card_number=card_number, holder_name=holder_name, bank_name=bank_name, active=True)
+        session.add(c)
+        await session.flush()
+        return c
+
+    @staticmethod
+    async def update(session: AsyncSession, card_id: int, card_number: str, holder_name: str, bank_name: str):
+        c = await session.get(Card, card_id)
+        if not c:
+            return None
+        c.card_number = card_number
+        c.holder_name = holder_name
+        c.bank_name = bank_name
+        await session.flush()
+        return c
+
+    @staticmethod
+    async def delete(session: AsyncSession, card_id: int) -> bool:
+        c = await session.get(Card, card_id)
+        if not c:
+            return False
+        await session.delete(c)
+        return True
 
 
 class ChannelPostRepo:

@@ -285,7 +285,7 @@ async def publish(cb: CallbackQuery, state: FSMContext):
             "Avval balansingizni to'ldiring.\n\n"
             "Draft saqlandi — balans to'ldirilgach davom ettirishingiz mumkin.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="💰 BALANSNI TO'LDIRISH", callback_data="bal_deposit")],
+                [InlineKeyboardButton(text="💰 BALANSNI TO'LDIRISH", callback_data=f"bal_deposit:{listing.id}")],
             ])
         )
         # Save as draft
@@ -302,9 +302,9 @@ async def publish(cb: CallbackQuery, state: FSMContext):
             )
             await listing_service.save_media(listing.id, draft["media"])
         except Exception:
-            pass
-        await state.clear()
-        return
+            await cb.message.answer("❌ Draftni saqlab bo'lmadi. Qaytadan urinib ko'ring.")
+            await state.clear()
+            return
 
     # Publish
     await safe_answer(cb, "⏳ Joylanmoqda...")

@@ -32,6 +32,13 @@ class BalanceStates(StatesGroup):
     entering_promo = State()
 
 
+class CardStates(StatesGroup):
+    add_number = State()
+    add_holder = State()
+    add_bank = State()
+    edit_card = State()
+
+
 class AdminStates(StatesGroup):
     user_search = State()
     user_message = State()

@@ -146,6 +146,18 @@ class PromoCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class Card(Base):
+    __tablename__ = "cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_number: Mapped[str] = mapped_column(String(32))
+    holder_name: Mapped[str] = mapped_column(String(128))
+    bank_name: Mapped[str] = mapped_column(String(64), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ChannelPost(Base):
     __tablename__ = "channel_posts"
 

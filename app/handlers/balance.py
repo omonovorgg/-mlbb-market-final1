@@ -10,6 +10,7 @@ from app.services.balance_service import balance_service
 from app.services.user_service import user_service
 from app.services.transaction_service import transaction_service
 from app.services.payment_service import payment_service
+from app.services.listing_service import listing_service
 from app.utils.security import safe_edit, safe_answer
 
 router = Router(name="balance")
@@ -26,8 +27,11 @@ async def show_balance(msg: Message, state: FSMContext):
     await msg.answer(text, reply_markup=balance_kb())
 
 
-@router.callback_query(F.data == "bal_deposit")
+@router.callback_query(F.data.startswith("bal_deposit"))
 async def deposit_start(cb: CallbackQuery, state: FSMContext):
+    parts = cb.data.split(":", 1)
+    resume_listing_id = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else None
+    await state.update_data(resume_listing_id=resume_listing_id)
     await state.set_state(BalanceStates.entering_amount)
     await safe_edit(cb, "💰 To'ldirish summasini kiriting (so'mda, masalan: 10000):",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -43,7 +47,9 @@ async def deposit_amount(msg: Message, state: FSMContext):
         await msg.answer("❌ To'g'ri summa kiriting (kamida 1 000 so'm).")
         return
     u = await user_service.get_by_tg(msg.from_user.id)
-    ext = await payment_service.create_payment_intent(u.id, v, provider="manual")
+    resume_listing_id = (await state.get_data()).get("resume_listing_id")
+    provider = f"manual:listing:{resume_listing_id}" if resume_listing_id else "manual"
+    ext = await payment_service.create_payment_intent(u.id, v, provider=provider)
     await msg.answer(
         f"💳 <b>To'lov yaratildi</b>\n\n"
         f"Summa: <b>{format_money(v)}</b>\n"
@@ -62,10 +68,20 @@ async def deposit_amount(msg: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("pay_confirm:"))
 async def pay_confirm(cb: CallbackQuery):
     ext = cb.data.split(":", 1)[1]
+    context = await payment_service.get_payment_context(ext)
     ok = await payment_service.confirm_payment(ext)
     if ok:
         u = await user_service.get_by_tg(cb.from_user.id)
-        await safe_edit(cb, f"✅ To'lov tasdiqlandi.\n\nYangi balans: <b>{format_money(u.balance)}</b>")
+        provider = context.get("provider", "") if context else ""
+        if provider.startswith("manual:listing:"):
+            listing_id = int(provider.rsplit(":", 1)[1])
+            success, result = await listing_service.activate_and_publish(listing_id, cb.from_user.id)
+            if success:
+                await safe_edit(cb, f"✅ To'lov tasdiqlandi.\n\n🚀 <b>E'lon #{listing_id} avtomatik joylandi.</b>\n\nYangi balans: <b>{format_money(u.balance)}</b>")
+            else:
+                await safe_edit(cb, f"⚠️ To'lov qabul qilindi, lekin e'lonni joylashda muammo: {result}\n\nYangi balans: <b>{format_money(u.balance)}</b>")
+        else:
+            await safe_edit(cb, f"✅ To'lov tasdiqlandi.\n\nYangi balans: <b>{format_money(u.balance)}</b>")
     else:
         await safe_edit(cb, "❌ To'lovni tasdiqlab bo'lmadi.")
     await safe_answer(cb)
