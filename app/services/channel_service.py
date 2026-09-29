@@ -1,4 +1,5 @@
 from typing import Optional
+from html import escape
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, InputMediaVideo
 import logging
@@ -200,6 +201,69 @@ class ChannelService:
             return True
         except Exception:
             logger.exception("send_top_ad failed")
+            return False
+
+    def _owner_mention(self, owner) -> str:
+        if not owner:
+            return "Sotuvchi"
+        if owner.username:
+            return f"@{owner.username}"
+        name = escape(owner.first_name or "Sotuvchi")
+        return f'<a href="tg://user?id={owner.telegram_id}">{name}</a>'
+
+    async def send_sold_announcement(self, listing_id: int) -> bool:
+        """Post a public SOLD announcement and mention the seller."""
+        if not self._bot:
+            return False
+        target = await self._resolve_channel_target()
+        if target is None:
+            return False
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l:
+                return False
+            owner = await UserRepo.get_by_id(session, l.user_id)
+            listing_text = format_listing_channel_text(l, owner, sold=True)
+            mention = self._owner_mention(owner)
+        text = (
+            f"🚨 <b>AKKAUNT SOTILDI</b>\n\n"
+            f"{listing_text}\n\n"
+            f"👤 Sotuvchi: {mention}"
+        )
+        try:
+            await self._bot.send_message(target, text)
+            return True
+        except Exception:
+            logger.exception("send_sold_announcement failed")
+            return False
+
+    async def send_fast_price_ad(self, listing_id: int, old_price: int, new_price: int) -> bool:
+        """Post a FAST NARX advertisement with the seller mention."""
+        if not self._bot:
+            return False
+        target = await self._resolve_channel_target()
+        if target is None:
+            return False
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l or l.status != "ACTIVE":
+                return False
+            owner = await UserRepo.get_by_id(session, l.user_id)
+            listing_text = format_listing_channel_text(l, owner)
+            mention = self._owner_mention(owner)
+            kb = self._seller_kb(owner, l.deal_type)
+        text = (
+            f"⚡️ <b>FAST NARX</b>\n\n"
+            f"{listing_text}\n\n"
+            f"💸 Eski narx: <s>{old_price:,}</s> so'm\n"
+            f"🔥 Yangi narx: <b>{new_price:,} so'm</b>\n"
+            f"👤 Sotuvchi: {mention}"
+        ).replace(",", " ")
+        try:
+            await self._bot.send_message(target, text, reply_markup=kb)
+            return True
+        except Exception:
+            logger.exception("send_fast_price_ad failed")
             return False
 
     async def delete_listing_post(self, listing_id: int) -> bool:
