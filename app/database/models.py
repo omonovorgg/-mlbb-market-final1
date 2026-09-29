@@ -12,6 +12,7 @@ class User(Base):
     balance:Mapped[int]=mapped_column(Integer,default=0)
     diamonds:Mapped[int]=mapped_column(Integer,default=0)
     game_coins:Mapped[int]=mapped_column(Integer,default=500)
+    vr_balance:Mapped[int]=mapped_column(Integer,default=0)
     status:Mapped[str]=mapped_column(String(16),default="active")
     ban_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
     created_listings:Mapped[int]=mapped_column(Integer,default=0)
@@ -42,6 +43,9 @@ class Listing(Base):
     free_edit_used:Mapped[bool]=mapped_column(Boolean,default=False);free_price_change_used:Mapped[bool]=mapped_column(Boolean,default=False)
     is_top:Mapped[bool]=mapped_column(Boolean,default=False)
     marketplace_enabled:Mapped[bool]=mapped_column(Boolean,default=False,index=True)
+    marketplace_vr_price:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    promo_level:Mapped[str]=mapped_column(String(16),default="NONE")
+    promo_until:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     updated_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow)
     sold_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True);deleted_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
@@ -119,3 +123,15 @@ class ChannelPost(Base):
     listing=relationship("Listing",back_populates="channel_post")
 
 Index("ix_listing_status_top",Listing.status,Listing.is_top)
+
+
+class MarketplaceOrder(Base):
+    __tablename__="marketplace_orders"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True,autoincrement=True)
+    listing_id:Mapped[int]=mapped_column(ForeignKey("listings.id"),index=True)
+    buyer_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    seller_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    price_vr:Mapped[int]=mapped_column(Integer)
+    status:Mapped[str]=mapped_column(String(16),default="PENDING",index=True)
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    confirmed_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
