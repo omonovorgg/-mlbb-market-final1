@@ -19,6 +19,15 @@ from app.database.repository import UserRepo
 
 router = Router(name="listing_create")
 
+async def _preview_edit_done(state: FSMContext) -> bool:
+    data = await state.get_data()
+    if not data.get("editing_preview_field"):
+        return False
+    await state.update_data(editing_preview_field=None)
+    await state.set_state(ListingCreate.preview)
+    return True
+
+
 
 def _empty_draft() -> dict:
     return {
@@ -64,6 +73,10 @@ async def set_current_rank(cb: CallbackQuery, state: FSMContext):
     draft = data["draft"]
     draft["current_rank"] = rank
     await state.update_data(draft=draft)
+    if await _preview_edit_done(state):
+        await safe_edit(cb, format_listing_preview(draft), reply_markup=preview_kb())
+        await safe_answer(cb)
+        return
     await state.set_state(ListingCreate.peak_rank)
     await safe_edit(cb, "3️⃣ <b>Eng yuqori (peak) rank</b>ni tanlang:",
                     reply_markup=ranks_kb("pr"))
@@ -77,6 +90,10 @@ async def set_peak_rank(cb: CallbackQuery, state: FSMContext):
     draft = data["draft"]
     draft["peak_rank"] = rank
     await state.update_data(draft=draft)
+    if await _preview_edit_done(state):
+        await safe_edit(cb, format_listing_preview(draft), reply_markup=preview_kb())
+        await safe_answer(cb)
+        return
     await state.set_state(ListingCreate.hero_count)
     await safe_edit(cb, "4️⃣ <b>Hero soni</b>ni kiriting (masalan: 87):", reply_markup=cancel_kb())
     await safe_answer(cb)
@@ -91,6 +108,9 @@ async def set_hero(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["hero_count"] = v
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await msg.answer(format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        return
     await state.set_state(ListingCreate.skin_count)
     await msg.answer("5️⃣ <b>Skin soni</b>ni kiriting (masalan: 143):", reply_markup=cancel_kb())
 
@@ -104,6 +124,9 @@ async def set_skin(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["skin_count"] = v
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await msg.answer(format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        return
     await state.set_state(ListingCreate.win_rate)
     await msg.answer("6️⃣ <b>Win Rate</b>ni kiriting (masalan: 72.4):", reply_markup=cancel_kb())
 
@@ -120,6 +143,9 @@ async def set_win_rate(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["win_rate"] = value
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await msg.answer(format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        return
     await state.set_state(ListingCreate.main_hero)
     await msg.answer("7️⃣ <b>Main Hero</b>ni kiriting (masalan: Fanny):", reply_markup=cancel_kb())
 
@@ -132,6 +158,9 @@ async def set_main_hero(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["main_hero"] = value
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await msg.answer(format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        return
     await state.set_state(ListingCreate.collection_value)
     await msg.answer("8️⃣ <b>Kolleksiya qiymati</b>ni kiriting (masalan: 52000):", reply_markup=cancel_kb())
 
@@ -144,6 +173,9 @@ async def set_collection_value(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["collection_value"] = v
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await msg.answer(format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        return
     await state.set_state(ListingCreate.account_links)
     await msg.answer(
         "9️⃣ Akkauntda <b>bog'langan</b> xizmatlarni belgilang:",
@@ -244,6 +276,9 @@ async def set_price(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["price"] = v
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await msg.answer(format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        return
     await state.set_state(ListingCreate.description)
     await msg.answer(
         "1️⃣2️⃣ Qo'shimcha <b>tavsif</b> kiriting (ixtiyoriy).\n"
