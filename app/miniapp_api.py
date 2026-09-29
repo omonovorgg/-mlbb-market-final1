@@ -96,9 +96,36 @@ async def buy_vr(request):
 
 
 async def ads(request):
+    page=request.query.get("page","home").strip().lower()
+    now=datetime.utcnow()
     async with async_session() as s:
-        rows=(await s.execute(text("SELECT id,title,description,target_url,active FROM marketplace_ads WHERE active=TRUE ORDER BY id DESC"))).mappings().all()
-    return _json(request,{"items":[dict(x) for x in rows]})
+        rows=(await s.execute(text("""
+            SELECT id,title,description,target_url,image_url,pages,starts_at,ends_at,views,clicks
+            FROM marketplace_ads
+            WHERE active=TRUE
+              AND (starts_at IS NULL OR starts_at<=:now)
+              AND (ends_at IS NULL OR ends_at>:now)
+            ORDER BY id DESC
+        """),{"now":now})).mappings().all()
+        items=[]
+        for row in rows:
+            pages=[x.strip().lower() for x in (row["pages"] or "home").split(",") if x.strip()]
+            if page not in pages and "all" not in pages: continue
+            await s.execute(text("UPDATE marketplace_ads SET views=views+1 WHERE id=:id"),{"id":row["id"]})
+            items.append(dict(row))
+        await s.commit()
+    return _json(request,{"items":items})
+
+
+async def ad_click(request):
+    aid=int(request.match_info["id"])
+    async with async_session() as s:
+        await s.execute(text("UPDATE marketplace_ads SET clicks=clicks+1 WHERE id=:id AND active=TRUE"),{"id":aid})
+        row=(await s.execute(text("SELECT target_url FROM marketplace_ads WHERE id=:id"),{"id":aid})).mappings().first()
+        await s.commit()
+    return _json(request,{"ok":True,"targetUrl":row["target_url"] if row else None})
+
+
 
 
 async def promote_listing(request):
