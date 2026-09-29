@@ -222,7 +222,7 @@ class ListingService:
             base = l.top_until if l.top_until and l.top_until > now else now
             l.is_top = True
             l.top_until = base + timedelta(hours=24)
-            l.top_last_ad_at = None
+            l.top_last_ad_at = now
             await session.commit()
         return True
 
