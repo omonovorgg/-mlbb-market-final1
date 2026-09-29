@@ -1,6 +1,8 @@
 from aiogram.fsm.state import State, StatesGroup
 class ListingCreate(StatesGroup):
-    current_rank=State(); peak_rank=State(); hero_count=State(); skin_count=State(); account_links=State(); media=State(); price=State(); description=State(); preview=State()
+    deal_type=State(); current_rank=State(); peak_rank=State(); hero_count=State(); skin_count=State()
+    win_rate=State(); main_hero=State(); collection_value=State()
+    account_links=State(); media=State(); price=State(); description=State(); preview=State()
 class EditListing(StatesGroup):
     choosing_field=State(); new_value=State(); confirm_paid=State()
 class SearchStates(StatesGroup):
