@@ -262,7 +262,7 @@ async def lucky_claim(request):
         await s.commit()
     user = await user_service.get_by_tg(tg_id)
     await transaction_service.create(user_id=user.id, amount=bonus, ttype="bonus", description="Lucky Wheel daily bonus")
-    return _json(request, {"ok": True, "alreadyClaimed": False, "reward": bonus, "balance": (user.balance or 0) + bonus})
+    return _json(request, {"ok": True, "alreadyClaimed": False, "reward": bonus, "balance": user.balance or 0})
 
 
 async def packages(request):
