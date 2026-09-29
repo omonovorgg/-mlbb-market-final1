@@ -508,6 +508,11 @@ async def confirm_price_change(cb: CallbackQuery, state: FSMContext):
     except Exception:
         pass
 
+    try:
+        await channel_service.send_fast_price_ad(lid, old_price, new_price)
+    except Exception:
+        pass
+
     await safe_edit(cb,
                     f"✅ Narx yangilandi: {format_money(old_price)} → {format_money(new_price)}")
     await safe_answer(cb)
