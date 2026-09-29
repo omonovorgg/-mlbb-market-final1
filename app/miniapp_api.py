@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 
 from app.config import config
 from app.database.db import async_session
-from app.database.models import User, Listing, ListingMedia, Admin, Setting, MarketplaceOrder
+from app.database.models import User, Listing, ListingMedia, Admin, Setting, MarketplaceOrder, Card
 from app.services.balance_service import balance_service
 from app.services.transaction_service import transaction_service
 from app.services.user_service import user_service
@@ -48,7 +48,7 @@ async def user(request):
         if not u:
             raise web.HTTPNotFound(text="User not found")
         admin = int(tg["id"]) in config.super_admin_ids or await s.scalar(select(Admin).where(Admin.telegram_id == int(tg["id"])))
-        return _json(request, {"user":{"id":u.telegram_id,"username":u.username,"name":u.first_name,"balance":u.balance or 0,"diamonds":u.diamonds or 0,"coins":u.game_coins or 0,"vr":u.vr_balance or 0,"admin":bool(admin)}})
+        return _json(request, {"user":{"id":u.telegram_id,"username":u.username,"name":u.first_name,"balance":u.balance or 0,"diamonds":u.diamonds or 0,"coins":u.game_coins or 0,"vr":u.vr_balance or 0,"luckyDiscount":u.lucky_discount or 0,"luckyExtraSpins":u.lucky_extra_spins or 0,"luckyAdCredit":u.lucky_ad_credit or 0,"luckyGift":u.lucky_gift,"admin":bool(admin)}})
 
 
 async def listings(request):
@@ -68,7 +68,7 @@ async def listings(request):
             media=(await s.execute(select(ListingMedia).where(ListingMedia.listing_id==l.id))).scalars().all()
             promo = l.promo_level if l.promo_until and l.promo_until > now else "NONE"
             out.append({"id":l.id,"title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin",
-                        "category":"Account","price":l.price,"vrPrice":l.marketplace_vr_price or max(1,(int(l.price)+19)//20),
+                        "category":"Account","price":l.price,"vrPrice":0,
                         "seller":u.username or u.first_name or "Seller","ownerId":u.telegram_id,"badge":promo if promo!="NONE" else ("TOP" if l.is_top else "Marketplace"),
                         "promo":promo,"rank":l.current_rank,"peakRank":l.peak_rank,"heroCount":l.hero_count,"skinCount":l.skin_count,
                         "links":[x for x in (l.account_links or "").split(",") if x],"description":l.description or "","mediaCount":len(media)})
@@ -159,48 +159,76 @@ async def orders(request):
                                       for o,l in rows]})
 
 
+async def payment_info(request):
+    _init_user(_raw(request))
+    async with async_session() as s:
+        rows=(await s.execute(select(Card).where(Card.active.is_(True)).order_by(Card.id))).scalars().all()
+        return _json(request,{"cards":[{"id":x.id,"number":x.card_number,"holder":x.holder_name,"bank":x.bank_name} for x in rows]})
+
+
 async def buy_listing(request):
     tg=_init_user(_raw(request)); body=await request.json(); lid=int(body.get("listingId",0)); tg_id=int(tg["id"])
     async with async_session() as s:
         buyer=await s.scalar(select(User).where(User.telegram_id==tg_id))
         l=await s.get(Listing,lid)
         if not buyer or not l: raise web.HTTPNotFound(text="E'lon topilmadi")
-        seller=await s.get(User,l.user_id)
-        if not seller or seller.id==buyer.id: raise web.HTTPBadRequest(text="O'zingizning e'loningizni sotib olib bo'lmaydi")
-        if l.status!="ACTIVE" or not l.marketplace_enabled: raise web.HTTPBadRequest(text="E'lon faol emas")
-        existing=await s.scalar(select(MarketplaceOrder).where(MarketplaceOrder.listing_id==lid,MarketplaceOrder.status=="PENDING"))
-        if existing: raise web.HTTPBadRequest(text="Bu e'lon bo'yicha allaqachon buyurtma bor")
-        price=int(l.marketplace_vr_price or max(1,(int(l.price)+19)//20))
-        if (buyer.vr_balance or 0)<price: raise web.HTTPBadRequest(text=f"VR yetarli emas: {price} VR kerak")
-        buyer.vr_balance-=price
-        o=MarketplaceOrder(listing_id=lid,buyer_id=buyer.id,seller_id=seller.id,price_vr=price,status="PENDING")
-        s.add(o); await s.commit(); await s.refresh(o)
-        return _json(request,{"ok":True,"orderId":o.id,"priceVr":price,"status":"PENDING"})
+        if l.status!="ACTIVE" or not l.marketplace_enabled: raise web.HTTPBadRequest(text="Akkaunt hozir sotuvda emas")
+        existing=await s.scalar(select(MarketplaceOrder).where(
+            MarketplaceOrder.listing_id==lid,
+            MarketplaceOrder.status.in_([ "PENDING_PAYMENT", "PAYMENT_SENT" ])
+        ))
+        if existing: raise web.HTTPBadRequest(text="Bu akkaunt uchun allaqachon buyurtma mavjud")
+        base_price=int(l.price)
+        discount=min(70,max(0,int(buyer.lucky_discount or 0)))
+        final_price=max(0, base_price*(100-discount)//100)
+        ext=f"ACC-{lid}-{tg_id}-{int(time.time())}"
+        order=MarketplaceOrder(
+            listing_id=lid,buyer_id=buyer.id,seller_id=l.user_id,price_vr=0,
+            price_som=final_price,discount_percent=discount,payment_external_id=ext,
+            status="PENDING_PAYMENT"
+        )
+        s.add(order)
+        await s.commit(); await s.refresh(order)
+        return _json(request,{"ok":True,"orderId":order.id,"paymentId":ext,"basePrice":base_price,"discount":discount,"priceSom":final_price,"status":order.status})
+
+
+async def mark_order_paid(request):
+    tg=_init_user(_raw(request)); oid=int(request.match_info["id"]); tg_id=int(tg["id"])
+    async with async_session() as s:
+        u=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        o=await s.get(MarketplaceOrder,oid)
+        if not u or not o or o.buyer_id!=u.id: raise web.HTTPForbidden(text="Buyurtma sizniki emas")
+        if o.status!="PENDING_PAYMENT": raise web.HTTPBadRequest(text="Buyurtma holati o'zgargan")
+        o.status="PAYMENT_SENT"
+        await s.commit()
+        return _json(request,{"ok":True,"status":o.status})
+
+
+async def orders(request):
+    tg=_init_user(_raw(request)); tg_id=int(tg["id"])
+    async with async_session() as s:
+        u=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        if not u: raise web.HTTPNotFound(text="User not found")
+        rows=(await s.execute(select(MarketplaceOrder,Listing).join(Listing,Listing.id==MarketplaceOrder.listing_id)
+                              .where(MarketplaceOrder.buyer_id==u.id)
+                              .order_by(MarketplaceOrder.created_at.desc()).limit(50))).all()
+        return _json(request,{"items":[{"id":o.id,"listingId":o.listing_id,"priceSom":o.price_som,"discount":o.discount_percent,
+                                       "paymentId":o.payment_external_id,"status":o.status,
+                                       "title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin"}
+                                      for o,l in rows]})
 
 
 async def confirm_order(request):
-    tg=_init_user(_raw(request)); oid=int(request.match_info["id"]); tg_id=int(tg["id"])
-    async with async_session() as s:
-        seller=await s.scalar(select(User).where(User.telegram_id==tg_id))
-        o=await s.get(MarketplaceOrder,oid)
-        if not seller or not o or o.seller_id!=seller.id: raise web.HTTPForbidden(text="Faqat sotuvchi tasdiqlashi mumkin")
-        if o.status!="PENDING": raise web.HTTPBadRequest(text="Buyurtma faol emas")
-        l=await s.get(Listing,o.listing_id); buyer=await s.get(User,o.buyer_id)
-        if not l or not buyer: raise web.HTTPBadRequest(text="Buyurtma ma'lumoti topilmadi")
-        seller.vr_balance=(seller.vr_balance or 0)+o.price_vr
-        o.status="COMPLETED"; o.confirmed_at=datetime.utcnow(); l.status="SOLD"; l.marketplace_enabled=False; l.sold_at=datetime.utcnow()
-        await s.commit()
-    return _json(request,{"ok":True,"status":"COMPLETED"})
+    raise web.HTTPGone(text="Old seller confirmation flow is disabled; use admin order confirmation")
 
 
 async def cancel_order(request):
     tg=_init_user(_raw(request)); oid=int(request.match_info["id"]); tg_id=int(tg["id"])
     async with async_session() as s:
         u=await s.scalar(select(User).where(User.telegram_id==tg_id)); o=await s.get(MarketplaceOrder,oid)
-        if not u or not o or (o.buyer_id!=u.id and o.seller_id!=u.id): raise web.HTTPForbidden(text="Ruxsat yo'q")
-        if o.status!="PENDING": raise web.HTTPBadRequest(text="Buyurtma faol emas")
-        buyer=await s.get(User,o.buyer_id); buyer.vr_balance=(buyer.vr_balance or 0)+o.price_vr; o.status="CANCELLED"
-        await s.commit()
+        if not u or not o or o.buyer_id!=u.id: raise web.HTTPForbidden(text="Ruxsat yo'q")
+        if o.status not in {"PENDING_PAYMENT","PAYMENT_SENT"}: raise web.HTTPBadRequest(text="Buyurtma faol emas")
+        o.status="CANCELLED"; await s.commit()
     return _json(request,{"ok":True,"status":"CANCELLED"})
 
 
@@ -407,6 +435,49 @@ async def admin_ad_delete(request):
 
 
 
+async def admin_orders(request):
+    tg=_init_user(_raw(request)); await _check_admin(tg)
+    async with async_session() as s:
+        rows=(await s.execute(
+            select(MarketplaceOrder,Listing,User)
+            .join(Listing,Listing.id==MarketplaceOrder.listing_id)
+            .join(User,User.id==MarketplaceOrder.buyer_id)
+            .where(MarketplaceOrder.status.in_([ "PENDING_PAYMENT", "PAYMENT_SENT" ]))
+            .order_by(MarketplaceOrder.created_at.desc()).limit(100)
+        )).all()
+        return _json(request,{"items":[
+            {"id":o.id,"listingId":o.listing_id,"title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin",
+             "buyerId":u.telegram_id,"buyer":u.username or u.first_name or str(u.telegram_id),
+             "priceSom":o.price_som,"basePrice":int(l.price),"discount":o.discount_percent,
+             "paymentId":o.payment_external_id,"status":o.status}
+            for o,l,u in rows
+        ]})
+
+
+async def admin_order_action(request):
+    tg=_init_user(_raw(request)); await _check_admin(tg)
+    oid=int(request.match_info["id"]); body=await request.json(); action=str(body.get("action","")).lower()
+    if action not in {"confirm","reject"}: raise web.HTTPBadRequest(text="Invalid action")
+    async with async_session() as s:
+        o=await s.get(MarketplaceOrder,oid)
+        if not o or o.status not in {"PENDING_PAYMENT","PAYMENT_SENT"}:
+            raise web.HTTPBadRequest(text="Buyurtma faol emas")
+        l=await s.get(Listing,o.listing_id); buyer=await s.get(User,o.buyer_id)
+        if not l or not buyer: raise web.HTTPBadRequest(text="Buyurtma ma'lumoti topilmadi")
+        if action=="confirm":
+            o.status="COMPLETED"; o.confirmed_at=datetime.utcnow()
+            l.status="SOLD"; l.marketplace_enabled=False; l.sold_at=datetime.utcnow()
+            buyer.purchases=(buyer.purchases or 0)+1
+            buyer.total_spent=(buyer.total_spent or 0)+o.price_som
+            buyer.lucky_discount=0
+            buyer.lucky_ad_credit=0
+            buyer.lucky_gift=None
+        else:
+            o.status="CANCELLED"
+        await s.commit()
+        return _json(request,{"ok":True,"status":o.status,"listingId":l.id,"buyerId":buyer.telegram_id})
+
+
 async def _check_admin(tg):
     tg_id=int(tg["id"])
     if tg_id in config.super_admin_ids: return True
@@ -434,17 +505,21 @@ def register_miniapp_routes(app):
     app.router.add_get("/miniapp/me",user)
     app.router.add_get("/miniapp/listings",listings)
     app.router.add_get("/miniapp/packages",packages)
-    app.router.add_get("/miniapp/ads",ads)\n    app.router.add_post("/miniapp/ads/{id}/click",ad_click)
+    app.router.add_get("/miniapp/ads",ads)
+    app.router.add_get("/miniapp/payment-info",payment_info)\n    app.router.add_post("/miniapp/ads/{id}/click",ad_click)
     app.router.add_post("/miniapp/buy-vr",buy_vr)
     app.router.add_post("/miniapp/promote",promote_listing)
     app.router.add_get("/miniapp/orders",orders)
     app.router.add_post("/miniapp/buy-listing",buy_listing)
     app.router.add_post("/miniapp/orders/{id}/confirm",confirm_order)
+    app.router.add_post("/miniapp/orders/{id}/paid",mark_order_paid)
     app.router.add_post("/miniapp/orders/{id}/cancel",cancel_order)
     app.router.add_post("/miniapp/purchase-diamonds",buy_diamonds)
     app.router.add_post("/miniapp/game",game)
     app.router.add_get("/miniapp/admin",admin)
     app.router.add_get("/miniapp/admin/listings",admin_listings)
+    app.router.add_get("/miniapp/admin/orders",admin_orders)
+    app.router.add_post("/miniapp/admin/orders/{id}",admin_order_action)
     app.router.add_post("/miniapp/admin/settings",admin_setting)
     app.router.add_post("/miniapp/admin/ads",admin_ad)\n    app.router.add_delete("/miniapp/admin/ads/{id}",admin_ad_delete)
     app.router.add_post("/miniapp/admin/packages",admin_package)
