@@ -284,6 +284,7 @@ async def edit_field(cb: CallbackQuery, state: FSMContext):
     field = cb.data.split(":", 1)[1]
     data = await state.get_data()
     draft = data["draft"]
+    await state.update_data(editing_preview_field=field)
     if field == "deal_type":
         await state.set_state(ListingCreate.deal_type)
         await safe_edit(cb, "🔥 E'lon turini tanlang:", reply_markup=deal_type_kb())
