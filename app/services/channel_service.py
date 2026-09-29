@@ -25,9 +25,33 @@ class ChannelService:
     async def update_channel_id(self, cid: int):
         self._channel_id = cid
 
+    async def _resolve_channel_target(self):
+        if not self._bot:
+            return None
+        if self._channel_id:
+            try:
+                await self._bot.get_chat(self._channel_id)
+                return self._channel_id
+            except Exception:
+                logger.warning("CHANNEL_ID %s is not reachable; trying CHANNEL_USERNAME=%s",
+                               self._channel_id, config.channel_username)
+        if config.channel_username:
+            username = config.channel_username.strip()
+            if username:
+                try:
+                    await self._bot.get_chat(username)
+                    return username
+                except Exception:
+                    logger.exception("CHANNEL_USERNAME is not reachable")
+        return None
+
     async def publish_listing(self, listing_id: int) -> Optional[int]:
-        if not self._bot or not self._channel_id:
-            logger.error("Bot or channel not configured")
+        if not self._bot:
+            logger.error("Bot not configured")
+            return None
+        target = await self._resolve_channel_target()
+        if target is None:
+            logger.error("Channel is not reachable. Check CHANNEL_ID, CHANNEL_USERNAME and bot channel permissions.")
             return None
         async with async_session() as session:
             l = await ListingRepo.get(session, listing_id)
@@ -40,14 +64,14 @@ class ChannelService:
 
         try:
             if not media:
-                msg = await self._bot.send_message(self._channel_id, text, reply_markup=kb)
+                msg = await self._bot.send_message(target, text, reply_markup=kb)
                 return msg.message_id
             if len(media) == 1 and media[0].type == "video":
-                msg = await self._bot.send_video(self._channel_id, media[0].telegram_file_id,
+                msg = await self._bot.send_video(target, media[0].telegram_file_id,
                                                  caption=text, reply_markup=kb)
                 return msg.message_id
             if len(media) == 1 and media[0].type == "photo":
-                msg = await self._bot.send_photo(self._channel_id, media[0].telegram_file_id,
+                msg = await self._bot.send_photo(target, media[0].telegram_file_id,
                                                  caption=text, reply_markup=kb)
                 return msg.message_id
             if len(media) == 2 and all(m.type == "photo" for m in media):
@@ -55,9 +79,9 @@ class ChannelService:
                     InputMediaPhoto(media=m.telegram_file_id, caption=text if i == 0 else "")
                     for i, m in enumerate(media)
                 ]
-                msgs = await self._bot.send_media_group(self._channel_id, group)
+                msgs = await self._bot.send_media_group(target, group)
                 # Send inline buttons as separate reply message
-                await self._bot.send_message(self._channel_id, "⬇️ Batafsil ma'lumot", reply_markup=kb)
+                await self._bot.send_message(target, "⬇️ Batafsil ma'lumot", reply_markup=kb)
                 return msgs[0].message_id
             logger.warning("Unsupported media combination")
             return None
