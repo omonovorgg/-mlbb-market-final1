@@ -1,0 +1,50 @@
+from aiogram.fsm.state import State, StatesGroup
+
+
+class ListingCreate(StatesGroup):
+    current_rank = State()
+    peak_rank = State()
+    hero_count = State()
+    skin_count = State()
+    account_links = State()
+    media = State()
+    price = State()
+    description = State()
+    preview = State()
+
+
+class EditListing(StatesGroup):
+    choosing_field = State()
+    new_value = State()
+    confirm_paid = State()
+
+
+class SearchStates(StatesGroup):
+    menu = State()
+    price_min = State()
+    price_max = State()
+    hero_min = State()
+    skin_min = State()
+
+
+class BalanceStates(StatesGroup):
+    entering_amount = State()
+    entering_promo = State()
+
+
+class AdminStates(StatesGroup):
+    user_search = State()
+    user_message = State()
+    user_balance_amount = State()
+    user_balance_reason = State()
+    broadcast_message = State()
+    broadcast_confirm = State()
+    pricing_edit = State()
+    listing_search = State()
+    channel_test = State()
+    promo_create_code = State()
+    promo_create_amount = State()
+    promo_create_limit = State()
+    promo_create_expire = State()
+    settings_edit = State()
+    report_note = State()
