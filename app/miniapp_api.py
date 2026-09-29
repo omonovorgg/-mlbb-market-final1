@@ -69,7 +69,7 @@ async def listings(request):
             promo = l.promo_level if l.promo_until and l.promo_until > now else "NONE"
             out.append({"id":l.id,"title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin",
                         "category":"Account","price":l.price,"vrPrice":l.marketplace_vr_price or max(1,(int(l.price)+19)//20),
-                        "seller":u.username or u.first_name or "Seller","badge":promo if promo!="NONE" else ("TOP" if l.is_top else "Marketplace"),
+                        "seller":u.username or u.first_name or "Seller","ownerId":u.telegram_id,"badge":promo if promo!="NONE" else ("TOP" if l.is_top else "Marketplace"),
                         "promo":promo,"rank":l.current_rank,"peakRank":l.peak_rank,"heroCount":l.hero_count,"skinCount":l.skin_count,
                         "links":[x for x in (l.account_links or "").split(",") if x],"description":l.description or "","mediaCount":len(media)})
         return _json(request, {"items":out})
