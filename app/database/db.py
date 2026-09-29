@@ -27,6 +27,8 @@ async def init_db():
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS collection_legend INTEGER",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS collection_collector INTEGER",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS collection_epic INTEGER",
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS top_until TIMESTAMP",
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS top_last_ad_at TIMESTAMP",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_enabled BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_vr_price INTEGER",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_level VARCHAR(16) NOT NULL DEFAULT 'NONE'",
