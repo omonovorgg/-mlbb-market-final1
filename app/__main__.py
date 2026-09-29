@@ -119,10 +119,9 @@ async def main():
         except asyncio.CancelledError:
             pass
 
-        try:
-            await bot.delete_webhook(drop_pending_updates=False)
-        except Exception:
-            logger.exception("Failed to delete Telegram webhook during shutdown")
+        # Keep the webhook registered across Render restarts/spin-downs.
+        # Telegram must still know the endpoint when the next /start arrives,
+        # so that the incoming HTTPS request can wake the sleeping service.
 
         await runner.cleanup()
         await bot.session.close()
