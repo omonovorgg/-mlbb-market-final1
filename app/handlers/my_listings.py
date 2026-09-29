@@ -206,7 +206,17 @@ async def choose_edit_field(cb: CallbackQuery, state: FSMContext):
     elif field == "collection_value":
         await safe_edit(cb, "💎 Yangi kolleksiya qiymati:", reply_markup=cancel_kb())
     elif field == "account_links":
-        await safe_edit(cb, "🔗 Yangi linklar:", reply_markup=links_kb([]))
+        from app.config import LINK_OPTIONS
+        listing = await listing_service.get((await state.get_data())["edit_listing_id"])
+        selected = [x.strip() for x in (listing.account_links or "").split(",") if x.strip()] if listing else []
+        await state.update_data(edit_links=selected)
+        rows = []
+        for opt in LINK_OPTIONS:
+            mark = "✅" if opt in selected else "⬜"
+            rows.append([InlineKeyboardButton(text=f"{mark} {opt}", callback_data=f"editlink:{opt}")])
+        rows.append([InlineKeyboardButton(text="➡️ Davom etish", callback_data="editlinks_done")])
+        rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data="cancel_fsm")])
+        await safe_edit(cb, "🔗 Ulangan xizmatlarni belgilang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     elif field == "media":
         await state.update_data(edit_media=[])
         await safe_edit(cb, "📷 Yangi media (1-2 rasm yoki 1 video):", reply_markup=media_done_kb())
@@ -299,6 +309,35 @@ async def edit_set_video(msg: Message, state: FSMContext):
                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                          [InlineKeyboardButton(text="✅ Media tayyor", callback_data="edit_media_done")],
                      ]))
+
+
+@router.callback_query(F.data.startswith("editlink:"), StateFilter(EditListing.new_value))
+async def edit_link_toggle(cb: CallbackQuery, state: FSMContext):
+    name = cb.data.split(":", 1)[1]
+    data = await state.get_data()
+    links = list(data.get("edit_links", []))
+    if name in links:
+        links.remove(name)
+    else:
+        links.append(name)
+    await state.update_data(edit_links=links)
+    from app.config import LINK_OPTIONS
+    rows = []
+    for opt in LINK_OPTIONS:
+        mark = "✅" if opt in links else "⬜"
+        rows.append([InlineKeyboardButton(text=f"{mark} {opt}", callback_data=f"editlink:{opt}")])
+    rows.append([InlineKeyboardButton(text="➡️ Davom etish", callback_data="editlinks_done")])
+    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data="cancel_fsm")])
+    await safe_edit(cb, "🔗 Ulangan xizmatlarni belgilang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await safe_answer(cb)
+
+
+@router.callback_query(F.data == "editlinks_done", StateFilter(EditListing.new_value))
+async def edit_links_done(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(edit_value=data.get("edit_links", []))
+    await safe_edit(cb, "🔗 Ulanganlar tanlandi. Tasdiqlaysizmi?", reply_markup=confirm_kb("applyedit"))
+    await safe_answer(cb)
 
 
 @router.callback_query(F.data == "edit_media_done", StateFilter(EditListing.new_value))
