@@ -131,6 +131,77 @@ class ChannelService:
             logger.exception("edit_listing failed")
             return False
 
+
+    async def pin_listing(self, listing_id: int) -> bool:
+        if not self._bot:
+            return False
+        async with async_session() as session:
+            cp = await ChannelPostRepo.get_by_listing(session, listing_id)
+            if not cp:
+                return False
+        try:
+            await self._bot.pin_chat_message(
+                chat_id=cp.channel_id,
+                message_id=cp.message_id,
+                disable_notification=True,
+            )
+            return True
+        except Exception:
+            logger.exception("pin_listing failed")
+            return False
+
+    async def unpin_listing(self, listing_id: int) -> bool:
+        if not self._bot:
+            return False
+        async with async_session() as session:
+            cp = await ChannelPostRepo.get_by_listing(session, listing_id)
+            if not cp:
+                return False
+        try:
+            await self._bot.unpin_chat_message(
+                chat_id=cp.channel_id,
+                message_id=cp.message_id,
+            )
+            return True
+        except Exception:
+            logger.exception("unpin_listing failed")
+            return False
+
+    async def send_top_ad(self, listing_id: int) -> bool:
+        if not self._bot:
+            return False
+        target = await self._resolve_channel_target()
+        if target is None:
+            return False
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l or l.status != "ACTIVE" or not l.is_top:
+                return False
+            owner = await UserRepo.get_by_id(session, l.user_id)
+            media = list(await MediaRepo.get_for_listing(session, listing_id))
+            text = "🔥 <b>TOP REKLAMA</b>\n\n" + format_listing_channel_text(l, owner)
+            kb = self._seller_kb(owner, l.deal_type)
+        try:
+            if not media:
+                await self._bot.send_message(target, text, reply_markup=kb)
+            elif len(media) == 1 and media[0].type == "video":
+                await self._bot.send_video(target, media[0].telegram_file_id, caption=text, reply_markup=kb)
+            elif len(media) == 1 and media[0].type == "photo":
+                await self._bot.send_photo(target, media[0].telegram_file_id, caption=text, reply_markup=kb)
+            elif len(media) == 2 and all(m.type == "photo" for m in media):
+                group = [
+                    InputMediaPhoto(media=m.telegram_file_id, caption=text if i == 0 else "")
+                    for i, m in enumerate(media)
+                ]
+                msgs = await self._bot.send_media_group(target, group)
+                await self._bot.send_message(target, "⬇️ Batafsil ma'lumot", reply_markup=kb)
+            else:
+                return False
+            return True
+        except Exception:
+            logger.exception("send_top_ad failed")
+            return False
+
     async def delete_listing_post(self, listing_id: int) -> bool:
         if not self._bot:
             return False
