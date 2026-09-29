@@ -83,7 +83,7 @@ class Config:
     start_image_file_id: str = os.getenv("START_IMAGE_FILE_ID", "")
     start_welcome_text: str = os.getenv(
         "START_WELCOME_TEXT",
-        "🎮 <b>OLIGARCHBOI SHOP</b>\n\nMobile Legends akkauntlari savdosi uchun marketplace.\n\nDavom etish uchun kanalga obuna bo'ling.",
+        "🎮 <b>MLBB MARKET</b>\n\nMobile Legends akkauntlari savdosi uchun marketplace.",
     )
     deposit_auto_confirm_minutes: int = int(
         os.getenv("DEPOSIT_AUTO_CONFIRM_MINUTES", "30") or 30
