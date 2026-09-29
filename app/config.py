@@ -89,6 +89,7 @@ config = Config()
 
 DEFAULT_SETTINGS = {
     "listing_create_price": "2000",
+    "marketplace_listing_price": "2000",
     "listing_edit_price": "2000",
     "price_change_price": "2000",
     "free_edit_count": "1",
