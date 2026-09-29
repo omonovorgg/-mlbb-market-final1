@@ -16,6 +16,7 @@ from app.middlewares import UserMiddleware, ThrottleMiddleware
 from app.services.channel_service import channel_service
 from app.services.payment_service import payment_service
 from app.services.settings_service import settings_service
+from app.miniapp_api import register_miniapp_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ async def health_server(port: int, dp: Dispatcher, bot: Bot):
 
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
+    register_miniapp_routes(app)
 
     webhook_handler = SimpleRequestHandler(
         dispatcher=dp,
