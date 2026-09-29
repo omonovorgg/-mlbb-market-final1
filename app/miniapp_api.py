@@ -365,6 +365,7 @@ async def admin_listing(request):
         l=await s.get(Listing,lid)
         if not l: raise web.HTTPNotFound(text="Listing not found")
         if "marketplace" in body: l.marketplace_enabled=bool(body["marketplace"])
+        if "price" in body and body["price"] is not None: l.price=max(0,int(body["price"]))
         if "status" in body: l.status=str(body["status"])
         if "top" in body: l.is_top=bool(body["top"])
         await s.commit()
