@@ -60,7 +60,7 @@ class ChannelService:
             owner = await UserRepo.get_by_id(session, l.user_id)
             media = list(await MediaRepo.get_for_listing(session, listing_id))
             text = format_listing_channel_text(l, owner)
-            kb = self._seller_kb(owner)
+            kb = self._seller_kb(owner, l.deal_type)
 
         try:
             if not media:
@@ -102,7 +102,7 @@ class ChannelService:
             owner = await UserRepo.get_by_id(session, l.user_id)
             media = list(await MediaRepo.get_for_listing(session, listing_id))
             new_text = format_listing_channel_text(l, owner, sold=sold)
-            kb = self._seller_kb(owner) if not sold else None
+            kb = self._seller_kb(owner, l.deal_type) if not sold else None
 
         try:
             if not media:
@@ -155,11 +155,11 @@ class ChannelService:
             logger.exception("test send failed")
             return False
 
-    def _seller_kb(self, owner) -> Optional[InlineKeyboardMarkup]:
+    def _seller_kb(self, owner, deal_type: str = "SALE") -> Optional[InlineKeyboardMarkup]:
         if not owner or not owner.username:
             return None
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="👤 Sotuvchi bilan bog'lanish",
+            InlineKeyboardButton(text=("🔄 ALMASHAMAN" if deal_type == "EXCHANGE" else "🛒 SOTIB OLAMAN"),
                                  url=f"https://t.me/{owner.username}")
         ]])
 
