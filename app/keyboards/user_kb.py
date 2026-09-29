@@ -65,7 +65,6 @@ def preview_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ O'zgartirish", callback_data="preview_edit")],
         [InlineKeyboardButton(text="📣 KANALGA JOYLASH", callback_data="publish_listing")],
-        [InlineKeyboardButton(text="🛒 MARKETPLACE TARIFI", callback_data="publish_marketplace")],
         [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_fsm")],
     ])
 
