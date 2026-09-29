@@ -14,6 +14,7 @@ from app.database.db import init_db
 from app.handlers import register_all_handlers
 from app.middlewares import UserMiddleware, ThrottleMiddleware
 from app.services.channel_service import channel_service
+from app.services.listing_service import listing_service
 from app.services.payment_service import payment_service
 from app.services.settings_service import settings_service
 from app.miniapp_api import register_miniapp_routes
@@ -98,6 +99,15 @@ async def main():
                 await payment_service.auto_confirm_expired(bot)
             except Exception:
                 logger.exception("Auto-confirm loop error")
+            try:
+                ads, expired = await listing_service.top_maintenance()
+                for listing_id in ads:
+                    await channel_service.send_top_ad(listing_id)
+                for listing_id in expired:
+                    await channel_service.unpin_listing(listing_id)
+                    logger.info("TOP expired: listing #%s", listing_id)
+            except Exception:
+                logger.exception("TOP maintenance loop error")
             await asyncio.sleep(60)
 
     task = asyncio.create_task(auto_loop())
