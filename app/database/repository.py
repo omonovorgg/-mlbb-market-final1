@@ -275,6 +275,11 @@ class AdminRepo:
         if a:
             await session.delete(a)
 
+    @staticmethod
+    async def all(session: AsyncSession):
+        r = await session.execute(select(Admin).order_by(Admin.created_at.asc()))
+        return r.scalars().all()
+
 
 class AdminLogRepo:
     @staticmethod
