@@ -87,7 +87,8 @@ async def listing_delete(cb: CallbackQuery):
                 lo.status = "DELETED"
                 await session.commit()
         try:
-            await channel_service.delete_listing_post(lid)        except Exception:
+            await channel_service.delete_listing_post(lid)
+        except Exception:
             pass
         await admin_log_service.log(cb.from_user.id, "listing_delete", f"#{lid}", "")
     await safe_edit(cb, "🗑 O'chirildi.")
