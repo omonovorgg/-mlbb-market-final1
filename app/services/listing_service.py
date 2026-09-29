@@ -53,29 +53,28 @@ class ListingService:
             return list(await ListingRepo.user_listings(session, u.id, status))
 
     async def activate_marketplace(self, listing_id: int, telegram_id: int) -> tuple[bool, str]:
-        price = await settings_service.get_int("marketplace_listing_price", 2000)
-        listing = await self.get(listing_id)
-        if not listing:
-            return False, "E'lon topilmadi"
-        if listing.status == "ACTIVE" and listing.marketplace_enabled:
-            return True, "Allaqachon Marketplace'da"
-        bal = await balance_service.get_balance(telegram_id)
-        if bal < price:
-            return False, f"INSUFFICIENT:{price}:{bal}"
-        if not await balance_service.atomic_debit(telegram_id, price):
-            return False, f"INSUFFICIENT:{price}:{bal}"
+        fee = await settings_service.get_int("marketplace_listing_price_vr", 100)
         async with async_session() as session:
+            u = await UserRepo.get_by_tg(session, telegram_id)
+            if not u:
+                return False, "User not found"
             l = await ListingRepo.get(session, listing_id)
             if not l:
-                await balance_service.atomic_credit(telegram_id, price)
                 return False, "E'lon topilmadi"
+            if l.status == "ACTIVE" and l.marketplace_enabled:
+                return True, "Allaqachon Marketplace'da"
+            if (u.vr_balance or 0) < fee:
+                return False, f"INSUFFICIENT_VR:{fee}:{u.vr_balance or 0}"
+            u.vr_balance = (u.vr_balance or 0) - fee
             l.status = "ACTIVE"
             l.marketplace_enabled = True
+            if not l.marketplace_vr_price:
+                l.marketplace_vr_price = max(1, (int(l.price) + 19) // 20)
             await session.commit()
-        u = await user_service.get_by_tg(telegram_id)
+        u2 = await user_service.get_by_tg(telegram_id)
         await transaction_service.create(
-            user_id=u.id, amount=-price, ttype="marketplace_listing",
-            description=f"Marketplace e'lon #{listing_id}", related_listing_id=listing_id
+            user_id=u2.id, amount=-fee, ttype="marketplace_listing_vr",
+            description=f"Marketplace e'lon #{listing_id} ({fee} VR)", related_listing_id=listing_id
         )
         return True, "OK"
 
