@@ -13,7 +13,7 @@ def _links_line(links: str) -> str:
     for opt in LINK_OPTIONS:
         mark = "✅" if opt in have else "❌"
         lines.append(f"🔗 {opt}: {mark}")
-    return "\n".join(lines)
+    return "<blockquote>" + "\n".join(lines) + "</blockquote>"
 
 
 def format_listing_preview(d: dict) -> str:
