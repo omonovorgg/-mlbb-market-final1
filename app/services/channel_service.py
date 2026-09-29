@@ -1,7 +1,7 @@
 from typing import Optional
 from html import escape
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, InputMediaVideo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, InputMediaVideo, ReplyParameters
 import logging
 from app.config import config
 from app.database.db import async_session
@@ -222,16 +222,16 @@ class ChannelService:
             l = await ListingRepo.get(session, listing_id)
             if not l:
                 return False
-            owner = await UserRepo.get_by_id(session, l.user_id)
-            listing_text = format_listing_channel_text(l, owner, sold=True)
-            mention = self._owner_mention(owner)
-        text = (
-            f"🚨 <b>AKKAUNT SOTILDI</b>\n\n"
-            f"{listing_text}\n\n"
-            f"👤 Sotuvchi: {mention}"
-        )
+            cp = await ChannelPostRepo.get_by_listing(session, listing_id)
+            if not cp:
+                return False
+        text = "#SOTILDI"
         try:
-            await self._bot.send_message(target, text)
+            await self._bot.send_message(
+                target,
+                text,
+                reply_parameters=ReplyParameters(message_id=cp.message_id),
+            )
             return True
         except Exception:
             logger.exception("send_sold_announcement failed")
@@ -248,19 +248,17 @@ class ChannelService:
             l = await ListingRepo.get(session, listing_id)
             if not l or l.status != "ACTIVE":
                 return False
-            owner = await UserRepo.get_by_id(session, l.user_id)
-            listing_text = format_listing_channel_text(l, owner)
-            mention = self._owner_mention(owner)
-            kb = self._seller_kb(owner, l.deal_type)
-        text = (
-            f"⚡️ <b>FAST NARX</b>\n\n"
-            f"{listing_text}\n\n"
-            f"💸 Eski narx: <s>{old_price:,}</s> so'm\n"
-            f"🔥 Yangi narx: <b>{new_price:,} so'm</b>\n"
-            f"👤 Sotuvchi: {mention}"
-        ).replace(",", " ")
+            cp = await ChannelPostRepo.get_by_listing(session, listing_id)
+            if not cp:
+                return False
+        formatted_price = f"{new_price:,}".replace(",", " ")
+        text = f"#FAST {formatted_price} so'm"
         try:
-            await self._bot.send_message(target, text, reply_markup=kb)
+            await self._bot.send_message(
+                target,
+                text,
+                reply_parameters=ReplyParameters(message_id=cp.message_id),
+            )
             return True
         except Exception:
             logger.exception("send_fast_price_ad failed")
