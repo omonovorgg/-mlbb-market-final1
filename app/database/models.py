@@ -50,6 +50,8 @@ class Listing(Base):
     status:Mapped[str]=mapped_column(String(16),default="DRAFT",index=True)
     free_edit_used:Mapped[bool]=mapped_column(Boolean,default=False);free_price_change_used:Mapped[bool]=mapped_column(Boolean,default=False)
     is_top:Mapped[bool]=mapped_column(Boolean,default=False)
+    top_until:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    top_last_ad_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     marketplace_enabled:Mapped[bool]=mapped_column(Boolean,default=False,index=True)
     marketplace_vr_price:Mapped[int|None]=mapped_column(Integer,nullable=True)
     promo_level:Mapped[str]=mapped_column(String(16),default="NONE")
