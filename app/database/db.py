@@ -52,6 +52,12 @@ async def init_db():
                 target_url TEXT,
                 active BOOLEAN NOT NULL DEFAULT TRUE
             )""",
+            "ALTER TABLE marketplace_ads ADD COLUMN IF NOT EXISTS image_url TEXT",
+            "ALTER TABLE marketplace_ads ADD COLUMN IF NOT EXISTS pages TEXT NOT NULL DEFAULT 'home'",
+            "ALTER TABLE marketplace_ads ADD COLUMN IF NOT EXISTS starts_at TIMESTAMP",
+            "ALTER TABLE marketplace_ads ADD COLUMN IF NOT EXISTS ends_at TIMESTAMP",
+            "ALTER TABLE marketplace_ads ADD COLUMN IF NOT EXISTS views INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE marketplace_ads ADD COLUMN IF NOT EXISTS clicks INTEGER NOT NULL DEFAULT 0",
         ]
         for sql in migrations:
             await conn.execute(text(sql))
