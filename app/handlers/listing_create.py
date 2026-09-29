@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from app.states.states import ListingCreate
 from app.keyboards.user_kb import (
-    cancel_kb, ranks_kb, links_kb, media_done_kb, preview_kb,
+    cancel_kb, deal_type_kb, ranks_kb, links_kb, media_done_kb, preview_kb,
     preview_edit_kb, confirm_kb
 )
 from app.utils.formatters import format_listing_preview
@@ -22,10 +22,14 @@ router = Router(name="listing_create")
 
 def _empty_draft() -> dict:
     return {
+        "deal_type": "SALE",
         "current_rank": None,
         "peak_rank": None,
         "hero_count": None,
         "skin_count": None,
+        "win_rate": None,
+        "main_hero": None,
+        "collection_value": None,
         "account_links": [],
         "media": [],  # list of (type, file_id)
         "price": None,
@@ -35,12 +39,22 @@ def _empty_draft() -> dict:
 
 @router.message(F.text == "➕ E'LON BERISH")
 async def start_create(msg: Message, state: FSMContext):
-    await state.set_state(ListingCreate.current_rank)
+    await state.set_state(ListingCreate.deal_type)
     await state.update_data(draft=_empty_draft())
     await msg.answer(
-        "1️⃣ <b>Hozirgi rank</b>ni tanlang:",
-        reply_markup=ranks_kb("cr")
+        "1️⃣ <b>E'lon turini</b> tanlang:",
+        reply_markup=deal_type_kb()
     )
+
+@router.callback_query(F.data.startswith("deal_type:"), StateFilter(ListingCreate.deal_type))
+async def set_deal_type(cb: CallbackQuery, state: FSMContext):
+    deal_type = cb.data.split(":", 1)[1]
+    data = await state.get_data()
+    data["draft"]["deal_type"] = deal_type
+    await state.update_data(draft=data["draft"])
+    await state.set_state(ListingCreate.current_rank)
+    await safe_edit(cb, "2️⃣ <b>Hozirgi rank</b>ni tanlang:", reply_markup=ranks_kb("cr"))
+    await safe_answer(cb)
 
 
 @router.callback_query(F.data.startswith("cr:"), StateFilter(ListingCreate.current_rank))
@@ -51,7 +65,7 @@ async def set_current_rank(cb: CallbackQuery, state: FSMContext):
     draft["current_rank"] = rank
     await state.update_data(draft=draft)
     await state.set_state(ListingCreate.peak_rank)
-    await safe_edit(cb, "2️⃣ <b>Eng yuqori (peak) rank</b>ni tanlang:",
+    await safe_edit(cb, "3️⃣ <b>Eng yuqori (peak) rank</b>ni tanlang:",
                     reply_markup=ranks_kb("pr"))
     await safe_answer(cb)
 
@@ -64,7 +78,7 @@ async def set_peak_rank(cb: CallbackQuery, state: FSMContext):
     draft["peak_rank"] = rank
     await state.update_data(draft=draft)
     await state.set_state(ListingCreate.hero_count)
-    await safe_edit(cb, "3️⃣ <b>Hero soni</b>ni kiriting (masalan: 87):", reply_markup=cancel_kb())
+    await safe_edit(cb, "4️⃣ <b>Hero soni</b>ni kiriting (masalan: 87):", reply_markup=cancel_kb())
     await safe_answer(cb)
 
 
@@ -78,7 +92,7 @@ async def set_hero(msg: Message, state: FSMContext):
     data["draft"]["hero_count"] = v
     await state.update_data(draft=data["draft"])
     await state.set_state(ListingCreate.skin_count)
-    await msg.answer("4️⃣ <b>Skin soni</b>ni kiriting (masalan: 143):", reply_markup=cancel_kb())
+    await msg.answer("5️⃣ <b>Skin soni</b>ni kiriting (masalan: 143):", reply_markup=cancel_kb())
 
 
 @router.message(StateFilter(ListingCreate.skin_count), F.text)
@@ -91,8 +105,51 @@ async def set_skin(msg: Message, state: FSMContext):
     data["draft"]["skin_count"] = v
     await state.update_data(draft=data["draft"])
     await state.set_state(ListingCreate.account_links)
+    await state.set_state(ListingCreate.win_rate)
+    await msg.answer("6️⃣ <b>Win Rate</b>ni kiriting (masalan: 72.4):", reply_markup=cancel_kb())
+
+@router.message(StateFilter(ListingCreate.win_rate), F.text)
+async def set_win_rate(msg: Message, state: FSMContext):
+    try:
+        v = float(msg.text.strip().replace(",", "."))
+    except ValueError:
+        v = -1
+    if not 0 <= v <= 100:
+        await msg.answer("❌ Win Rate 0 dan 100 gacha bo'lishi kerak.")
+        return
+    value = f"{v:.1f}".rstrip("0").rstrip(".")
+    data = await state.get_data()
+    data["draft"]["win_rate"] = value
+    await state.update_data(draft=data["draft"])
+    await state.set_state(ListingCreate.main_hero)
+    await msg.answer("7️⃣ <b>Main Hero</b>ni kiriting (masalan: Fanny):", reply_markup=cancel_kb())
+
+@router.message(StateFilter(ListingCreate.main_hero), F.text)
+async def set_main_hero(msg: Message, state: FSMContext):
+    value = msg.text.strip()[:128]
+    if not value:
+        await msg.answer("❌ Main Hero nomini kiriting.")
+        return
+    data = await state.get_data()
+    data["draft"]["main_hero"] = value
+    await state.update_data(draft=data["draft"])
+    await state.set_state(ListingCreate.collection_value)
+    await msg.answer("8️⃣ <b>Kolleksiya qiymati</b>ni kiriting (masalan: 52000):", reply_markup=cancel_kb())
+
+@router.message(StateFilter(ListingCreate.collection_value), F.text)
+async def set_collection_value(msg: Message, state: FSMContext):
+    v = parse_positive_int(msg.text, min_v=0, max_v=10_000_000)
+    if v is None:
+        await msg.answer("❌ To'g'ri kolleksiya qiymatini kiriting.")
+        return
+    data = await state.get_data()
+    data["draft"]["collection_value"] = v
+    await state.update_data(draft=data["draft"])
+    await state.set_state(ListingCreate.account_links)
     await msg.answer(
-        "5️⃣ Akkauntda <b>bog'langan</b> xizmatlarni belgilang:",
+        "9️⃣ Akkauntda <b>bog'langan</b> xizmatlarni belgilang:",
+        reply_markup=links_kb([])
+    )",
         reply_markup=links_kb([])
     )
 
@@ -123,7 +180,7 @@ async def links_done(cb: CallbackQuery, state: FSMContext):
     await state.update_data(draft=data["draft"])
     await safe_edit(
         cb,
-        "6️⃣ <b>Media</b> yuboring:\n"
+        "🔟 <b>Media</b> yuboring:\n"
         "• 1 tagacha rasm\n"
         "• 2 tagacha rasm\n"
         "• 1 ta video\n\n"
@@ -179,7 +236,7 @@ async def media_done(cb: CallbackQuery, state: FSMContext):
         await safe_answer(cb, "❌ 1-2 rasm yoki 1 video yuboring", show_alert=True)
         return
     await state.set_state(ListingCreate.price)
-    await safe_edit(cb, "7️⃣ <b>Narxni</b> so'mda kiriting (masalan: 350000):",
+    await safe_edit(cb, "1️⃣1️⃣ <b>Narxni</b> so'mda kiriting (masalan: 350000):",
                     reply_markup=cancel_kb())
     await safe_answer(cb)
 
@@ -195,7 +252,7 @@ async def set_price(msg: Message, state: FSMContext):
     await state.update_data(draft=data["draft"])
     await state.set_state(ListingCreate.description)
     await msg.answer(
-        "8️⃣ Qo'shimcha <b>tavsif</b> kiriting (ixtiyoriy).\n"
+        "1️⃣2️⃣ Qo'shimcha <b>tavsif</b> kiriting (ixtiyoriy).\n"
         "O'tkazib yuborish uchun <b>-</b> yuboring.",
         reply_markup=cancel_kb()
     )
@@ -233,12 +290,24 @@ async def edit_field(cb: CallbackQuery, state: FSMContext):
     field = cb.data.split(":", 1)[1]
     data = await state.get_data()
     draft = data["draft"]
-    if field == "current_rank":
+    if field == "deal_type":
+        await state.set_state(ListingCreate.deal_type)
+        await safe_edit(cb, "🔥 E'lon turini tanlang:", reply_markup=deal_type_kb())
+    elif field == "current_rank":
         await state.set_state(ListingCreate.current_rank)
         await safe_edit(cb, "🏆 Hozirgi rankni tanlang:", reply_markup=ranks_kb("cr"))
     elif field == "peak_rank":
         await state.set_state(ListingCreate.peak_rank)
         await safe_edit(cb, "⭐ Peak rankni tanlang:", reply_markup=ranks_kb("pr"))
+    elif field == "win_rate":
+        await state.set_state(ListingCreate.win_rate)
+        await safe_edit(cb, "🎯 Yangi Win Rate:", reply_markup=cancel_kb())
+    elif field == "main_hero":
+        await state.set_state(ListingCreate.main_hero)
+        await safe_edit(cb, "🦸 Yangi Main Hero:", reply_markup=cancel_kb())
+    elif field == "collection_value":
+        await state.set_state(ListingCreate.collection_value)
+        await safe_edit(cb, "💎 Yangi kolleksiya qiymati:", reply_markup=cancel_kb())
     elif field == "hero_count":
         await state.set_state(ListingCreate.hero_count)
         await safe_edit(cb, "🦸 Hero sonini kiriting:", reply_markup=cancel_kb())
@@ -281,10 +350,14 @@ async def publish(cb: CallbackQuery, state: FSMContext):
     try:
         listing = await listing_service.create_draft(
             tg_id,
+            deal_type=draft["deal_type"],
             current_rank=draft["current_rank"],
             peak_rank=draft["peak_rank"],
             hero_count=draft["hero_count"],
             skin_count=draft["skin_count"],
+            win_rate=draft["win_rate"],
+            main_hero=draft["main_hero"],
+            collection_value=draft["collection_value"],
             account_links=draft["account_links"],
             price=draft["price"],
             description=draft["description"] or "",
