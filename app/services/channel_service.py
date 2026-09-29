@@ -1,0 +1,143 @@
+from typing import Optional
+from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, InputMediaVideo
+import logging
+from app.config import config
+from app.database.db import async_session
+from app.database.repository import ListingRepo, MediaRepo, ChannelPostRepo, UserRepo
+from app.utils.formatters import format_listing_channel_text
+
+logger = logging.getLogger(__name__)
+
+
+class ChannelService:
+    def __init__(self):
+        self._bot: Optional[Bot] = None
+        self._channel_id: int = config.channel_id
+
+    def set_bot(self, bot: Bot):
+        self._bot = bot
+
+    @property
+    def channel_id(self) -> int:
+        return self._channel_id
+
+    async def update_channel_id(self, cid: int):
+        self._channel_id = cid
+
+    async def publish_listing(self, listing_id: int) -> Optional[int]:
+        if not self._bot or not self._channel_id:
+            logger.error("Bot or channel not configured")
+            return None
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l:
+                return None
+            owner = await UserRepo.get_by_id(session, l.user_id)
+            media = list(await MediaRepo.get_for_listing(session, listing_id))
+            text = format_listing_channel_text(l, owner)
+            kb = self._seller_kb(owner)
+
+        try:
+            if not media:
+                msg = await self._bot.send_message(self._channel_id, text, reply_markup=kb)
+                return msg.message_id
+            if len(media) == 1 and media[0].type == "video":
+                msg = await self._bot.send_video(self._channel_id, media[0].telegram_file_id,
+                                                 caption=text, reply_markup=kb)
+                return msg.message_id
+            if len(media) == 1 and media[0].type == "photo":
+                msg = await self._bot.send_photo(self._channel_id, media[0].telegram_file_id,
+                                                 caption=text, reply_markup=kb)
+                return msg.message_id
+            if len(media) == 2 and all(m.type == "photo" for m in media):
+                group = [
+                    InputMediaPhoto(media=m.telegram_file_id, caption=text if i == 0 else "")
+                    for i, m in enumerate(media)
+                ]
+                msgs = await self._bot.send_media_group(self._channel_id, group)
+                # Send inline buttons as separate reply message
+                await self._bot.send_message(self._channel_id, "⬇️ Batafsil ma'lumot", reply_markup=kb)
+                return msgs[0].message_id
+            logger.warning("Unsupported media combination")
+            return None
+        except Exception:
+            logger.exception("channel publish error")
+            return None
+
+    async def edit_listing(self, listing_id: int, sold: bool = False) -> bool:
+        if not self._bot:
+            return False
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l:
+                return False
+            cp = await ChannelPostRepo.get_by_listing(session, listing_id)
+            if not cp:
+                return False
+            owner = await UserRepo.get_by_id(session, l.user_id)
+            media = list(await MediaRepo.get_for_listing(session, listing_id))
+            new_text = format_listing_channel_text(l, owner, sold=sold)
+            kb = self._seller_kb(owner) if not sold else None
+
+        try:
+            if not media:
+                await self._bot.edit_message_text(
+                    chat_id=cp.channel_id, message_id=cp.message_id,
+                    text=new_text, reply_markup=kb
+                )
+            else:
+                # Edit caption on first media
+                try:
+                    if media[0].type == "video":
+                        await self._bot.edit_message_caption(
+                            chat_id=cp.channel_id, message_id=cp.message_id,
+                            caption=new_text, reply_markup=kb
+                        )
+                    else:
+                        await self._bot.edit_message_caption(
+                            chat_id=cp.channel_id, message_id=cp.message_id,
+                            caption=new_text, reply_markup=kb
+                        )
+                except Exception:
+                    logger.exception("edit caption failed")
+                    return False
+            return True
+        except Exception:
+            logger.exception("edit_listing failed")
+            return False
+
+    async def delete_listing_post(self, listing_id: int) -> bool:
+        if not self._bot:
+            return False
+        async with async_session() as session:
+            cp = await ChannelPostRepo.get_by_listing(session, listing_id)
+            if not cp:
+                return False
+        try:
+            await self._bot.delete_message(chat_id=cp.channel_id, message_id=cp.message_id)
+            return True
+        except Exception:
+            logger.exception("delete_listing_post failed")
+            return False
+
+    async def send_test(self) -> bool:
+        if not self._bot or not self._channel_id:
+            return False
+        try:
+            await self._bot.send_message(self._channel_id, "🧪 Test xabar — kanal ulanishi OK")
+            return True
+        except Exception:
+            logger.exception("test send failed")
+            return False
+
+    def _seller_kb(self, owner) -> Optional[InlineKeyboardMarkup]:
+        if not owner or not owner.username:
+            return None
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="👤 Sotuvchi bilan bog'lanish",
+                                 url=f"https://t.me/{owner.username}")
+        ]])
+
+
+channel_service = ChannelService()
