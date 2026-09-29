@@ -1,4 +1,5 @@
 from typing import Optional, List
+from datetime import datetime, timedelta
 from app.database.db import async_session
 from app.database.repository import ListingRepo, MediaRepo, UserRepo, ChannelPostRepo
 from app.database.models import Listing, ListingMedia
@@ -208,6 +209,47 @@ class ListingService:
                 setattr(l, k, v)
             await session.commit()
         return True
+
+    async def activate_top(self, listing_id: int, owner_tg_id: int) -> bool:
+        now = datetime.utcnow()
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l or l.status != "ACTIVE":
+                return False
+            u = await UserRepo.get_by_tg(session, owner_tg_id)
+            if not u or l.user_id != u.id:
+                return False
+            base = l.top_until if l.top_until and l.top_until > now else now
+            l.is_top = True
+            l.top_until = base + timedelta(hours=24)
+            l.top_last_ad_at = None
+            await session.commit()
+        return True
+
+    async def top_maintenance(self) -> tuple[list[int], list[int]]:
+        now = datetime.utcnow()
+        ads: list[int] = []
+        expired: list[int] = []
+        async with async_session() as session:
+            from sqlalchemy import select, and_
+            q = await session.execute(
+                select(Listing).where(
+                    Listing.is_top == True,
+                    Listing.status == "ACTIVE",
+                )
+            )
+            for l in q.scalars().all():
+                if not l.top_until or l.top_until <= now:
+                    l.is_top = False
+                    l.top_until = None
+                    l.top_last_ad_at = None
+                    expired.append(l.id)
+                    continue
+                if l.top_last_ad_at is None or l.top_last_ad_at <= now - timedelta(hours=1):
+                    ads.append(l.id)
+                    l.top_last_ad_at = now
+            await session.commit()
+        return ads, expired
 
     async def all_active(self, limit: int = 50, offset: int = 0):
         async with async_session() as session:
