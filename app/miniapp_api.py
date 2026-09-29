@@ -149,6 +149,47 @@ async def admin_listing(request):
     return _json(request,{"ok":True})
 
 
+async def admin_listings(request):
+    tg=_init_user(_raw(request)); await _check_admin(tg)
+    async with async_session() as s:
+        rows=(await s.execute(
+            select(Listing, User).join(User, User.id==Listing.user_id)
+            .order_by(Listing.created_at.desc()).limit(100)
+        )).all()
+        return _json(request,{"items":[
+            {"id":l.id,"title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin","price":l.price,
+             "seller":u.username or u.first_name or str(u.telegram_id),"status":l.status,
+             "marketplace":bool(l.marketplace_enabled),"top":bool(l.is_top)}
+            for l,u in rows
+        ]})
+
+
+async def admin_setting(request):
+    tg=_init_user(_raw(request)); await _check_admin(tg); body=await request.json()
+    key=str(body.get("key","")).strip()
+    value=str(body.get("value","")).strip()
+    if not key or len(key)>64: raise web.HTTPBadRequest(text="Invalid setting")
+    async with async_session() as s:
+        setting=await s.get(Setting,key)
+        if setting: setting.value=value
+        else: s.add(Setting(key=key,value=value))
+        await s.commit()
+    return _json(request,{"ok":True})
+
+
+async def admin_ad(request):
+    tg=_init_user(_raw(request)); await _check_admin(tg); body=await request.json()
+    async with async_session() as s:
+        if body.get("id"):
+            await s.execute(text("UPDATE marketplace_ads SET title=:t,description=:d,target_url=:u,active=:a WHERE id=:id"),
+                            {"t":body["title"],"d":body.get("description",""),"u":body.get("targetUrl"),"a":bool(body.get("active",True)),"id":int(body["id"])})
+        else:
+            await s.execute(text("INSERT INTO marketplace_ads (title,description,target_url,active) VALUES (:t,:d,:u,:a)"),
+                            {"t":body["title"],"d":body.get("description",""),"u":body.get("targetUrl"),"a":bool(body.get("active",True))})
+        await s.commit()
+    return _json(request,{"ok":True})
+
+
 async def _check_admin(tg):
     tg_id=int(tg["id"])
     if tg_id in config.super_admin_ids: return True
@@ -179,6 +220,9 @@ def register_miniapp_routes(app):
     app.router.add_post("/miniapp/purchase-diamonds",buy_diamonds)
     app.router.add_post("/miniapp/game",game)
     app.router.add_get("/miniapp/admin",admin)
+    app.router.add_get("/miniapp/admin/listings",admin_listings)
+    app.router.add_post("/miniapp/admin/settings",admin_setting)
+    app.router.add_post("/miniapp/admin/ads",admin_ad)
     app.router.add_post("/miniapp/admin/packages",admin_package)
     app.router.add_delete("/miniapp/admin/packages/{id}",admin_package_delete)
     app.router.add_patch("/miniapp/admin/listings/{id}",admin_listing)
