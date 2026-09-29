@@ -181,6 +181,10 @@ class ListingService:
             await channel_service.edit_listing(listing_id, sold=True)
         except Exception:
             logger.exception("edit_listing sold failed")
+        try:
+            await channel_service.send_sold_announcement(listing_id)
+        except Exception:
+            logger.exception("send_sold_announcement failed")
         return True
 
     async def soft_delete(self, listing_id: int, owner_tg_id: int) -> bool:
