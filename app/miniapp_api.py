@@ -375,13 +375,36 @@ async def admin_ad(request):
     tg=_init_user(_raw(request)); await _check_admin(tg); body=await request.json()
     async with async_session() as s:
         if body.get("id"):
-            await s.execute(text("UPDATE marketplace_ads SET title=:t,description=:d,target_url=:u,active=:a WHERE id=:id"),
-                            {"t":body["title"],"d":body.get("description",""),"u":body.get("targetUrl"),"a":bool(body.get("active",True)),"id":int(body["id"])})
+            await s.execute(text("""
+                UPDATE marketplace_ads SET title=:t,description=:d,target_url=:u,image_url=:img,
+                pages=:pages,starts_at=:starts,ends_at=:ends,active=:a WHERE id=:id
+            """),{
+                "t":body["title"],"d":body.get("description",""),"u":body.get("targetUrl"),
+                "img":body.get("imageUrl"),"pages":body.get("pages","home"),"starts":body.get("startsAt"),
+                "ends":body.get("endsAt"),"a":bool(body.get("active",True)),"id":int(body["id"])
+            })
         else:
-            await s.execute(text("INSERT INTO marketplace_ads (title,description,target_url,active) VALUES (:t,:d,:u,:a)"),
-                            {"t":body["title"],"d":body.get("description",""),"u":body.get("targetUrl"),"a":bool(body.get("active",True))})
+            await s.execute(text("""
+                INSERT INTO marketplace_ads
+                (title,description,target_url,image_url,pages,starts_at,ends_at,active)
+                VALUES (:t,:d,:u,:img,:pages,:starts,:ends,:a)
+            """),{
+                "t":body["title"],"d":body.get("description",""),"u":body.get("targetUrl"),
+                "img":body.get("imageUrl"),"pages":body.get("pages","home"),"starts":body.get("startsAt"),
+                "ends":body.get("endsAt"),"a":bool(body.get("active",True))
+            })
         await s.commit()
     return _json(request,{"ok":True})
+
+
+async def admin_ad_delete(request):
+    tg=_init_user(_raw(request)); await _check_admin(tg); aid=int(request.match_info["id"])
+    async with async_session() as s:
+        await s.execute(text("DELETE FROM marketplace_ads WHERE id=:id"),{"id":aid})
+        await s.commit()
+    return _json(request,{"ok":True})
+
+
 
 
 async def _check_admin(tg):
@@ -411,7 +434,7 @@ def register_miniapp_routes(app):
     app.router.add_get("/miniapp/me",user)
     app.router.add_get("/miniapp/listings",listings)
     app.router.add_get("/miniapp/packages",packages)
-    app.router.add_get("/miniapp/ads",ads)
+    app.router.add_get("/miniapp/ads",ads)\n    app.router.add_post("/miniapp/ads/{id}/click",ad_click)
     app.router.add_post("/miniapp/buy-vr",buy_vr)
     app.router.add_post("/miniapp/promote",promote_listing)
     app.router.add_get("/miniapp/orders",orders)
@@ -423,7 +446,7 @@ def register_miniapp_routes(app):
     app.router.add_get("/miniapp/admin",admin)
     app.router.add_get("/miniapp/admin/listings",admin_listings)
     app.router.add_post("/miniapp/admin/settings",admin_setting)
-    app.router.add_post("/miniapp/admin/ads",admin_ad)
+    app.router.add_post("/miniapp/admin/ads",admin_ad)\n    app.router.add_delete("/miniapp/admin/ads/{id}",admin_ad_delete)
     app.router.add_post("/miniapp/admin/packages",admin_package)
     app.router.add_delete("/miniapp/admin/packages/{id}",admin_package_delete)
     app.router.add_patch("/miniapp/admin/listings/{id}",admin_listing)
