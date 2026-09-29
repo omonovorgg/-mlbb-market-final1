@@ -15,7 +15,11 @@ async def init_db():
         migrations = [
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS diamonds INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS game_coins INTEGER NOT NULL DEFAULT 500",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vr_balance INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_vr_price INTEGER",
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_level VARCHAR(16) NOT NULL DEFAULT 'NONE'",
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_until TIMESTAMP",
             """CREATE TABLE IF NOT EXISTS diamond_packages (
                 id SERIAL PRIMARY KEY,
                 diamonds INTEGER NOT NULL,
@@ -31,6 +35,16 @@ async def init_db():
                 reward INTEGER NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             )""",
+            """CREATE TABLE IF NOT EXISTS marketplace_orders (
+                id SERIAL PRIMARY KEY,
+                listing_id INTEGER NOT NULL,
+                buyer_id INTEGER NOT NULL,
+                seller_id INTEGER NOT NULL,
+                price_vr INTEGER NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                confirmed_at TIMESTAMP
+            )""",
             """CREATE TABLE IF NOT EXISTS marketplace_ads (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(160) NOT NULL,
@@ -45,7 +59,9 @@ async def init_db():
     # Seed default settings
     from app.services.settings_service import settings_service
     from app.config import DEFAULT_SETTINGS
-    await settings_service.seed_defaults(DEFAULT_SETTINGS)
+    defaults=dict(DEFAULT_SETTINGS)
+    defaults.update({"vr_som_rate":"20","marketplace_listing_price_vr":"100","promo_top_vr":"50","promo_vip_vr":"100","promo_ultra_vr":"200"})
+    await settings_service.seed_defaults(defaults)
 
 
 async def get_session() -> AsyncSession:
