@@ -16,10 +16,17 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS diamonds INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS game_coins INTEGER NOT NULL DEFAULT 500",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS vr_balance INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS lucky_discount INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS lucky_extra_spins INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS lucky_ad_credit INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS lucky_gift VARCHAR(128)",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_enabled BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_vr_price INTEGER",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_level VARCHAR(16) NOT NULL DEFAULT 'NONE'",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_until TIMESTAMP",
+            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS price_som INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS discount_percent INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS payment_external_id VARCHAR(64)",
             """CREATE TABLE IF NOT EXISTS diamond_packages (
                 id SERIAL PRIMARY KEY,
                 diamonds INTEGER NOT NULL,
@@ -44,6 +51,16 @@ async def init_db():
                 status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 confirmed_at TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS lucky_spins (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                spin_date DATE NOT NULL,
+                reward_type VARCHAR(32) NOT NULL,
+                reward_value INTEGER NOT NULL DEFAULT 0,
+                reward_text VARCHAR(160) NOT NULL DEFAULT '',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                UNIQUE(user_id, spin_date)
             )""",
             """CREATE TABLE IF NOT EXISTS marketplace_ads (
                 id SERIAL PRIMARY KEY,
