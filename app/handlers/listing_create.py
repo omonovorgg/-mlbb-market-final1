@@ -104,7 +104,6 @@ async def set_skin(msg: Message, state: FSMContext):
     data = await state.get_data()
     data["draft"]["skin_count"] = v
     await state.update_data(draft=data["draft"])
-    await state.set_state(ListingCreate.account_links)
     await state.set_state(ListingCreate.win_rate)
     await msg.answer("6️⃣ <b>Win Rate</b>ni kiriting (masalan: 72.4):", reply_markup=cancel_kb())
 
@@ -149,8 +148,6 @@ async def set_collection_value(msg: Message, state: FSMContext):
     await msg.answer(
         "9️⃣ Akkauntda <b>bog'langan</b> xizmatlarni belgilang:",
         reply_markup=links_kb([])
-    )",
-        reply_markup=links_kb([])
     )
 
 
@@ -165,7 +162,7 @@ async def toggle_link(cb: CallbackQuery, state: FSMContext):
         links.append(name)
     data["draft"]["account_links"] = links
     await state.update_data(draft=data["draft"])
-    await safe_edit(cb, "5️⃣ Akkauntda <b>bog'langan</b> xizmatlarni belgilang:",
+    await safe_edit(cb, "9️⃣ Akkauntda <b>bog'langan</b> xizmatlarni belgilang:",
                     reply_markup=links_kb(links))
     await safe_answer(cb)
 
@@ -173,9 +170,6 @@ async def toggle_link(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "links_done", StateFilter(ListingCreate.account_links))
 async def links_done(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    if not data["draft"]["account_links"]:
-        await safe_answer(cb, "Kamida bitta link tanlang", show_alert=True)
-        return
     await state.set_state(ListingCreate.media)
     await state.update_data(draft=data["draft"])
     await safe_edit(
