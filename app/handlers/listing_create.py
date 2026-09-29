@@ -275,39 +275,9 @@ async def publish(cb: CallbackQuery, state: FSMContext):
         return
 
     price = await settings_service.get_int("listing_create_price", 2000)
-    bal = await balance_service.get_balance(tg_id)
-    if bal < price:
-        await safe_answer(cb, "Balans yetarli emas", show_alert=False)
-        await cb.message.answer(
-            "❌ <b>Balans yetarli emas</b>\n\n"
-            f"E'lon joylash: <b>{price:,} so'm</b>\n".replace(",", " ") +
-            f"Balansingiz: <b>{bal:,} so'm</b>\n\n".replace(",", " ") +
-            "Avval balansingizni to'ldiring.\n\n"
-            "Draft saqlandi — balans to'ldirilgach davom ettirishingiz mumkin.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="💰 BALANSNI TO'LDIRISH", callback_data=f"bal_deposit:{listing.id}")],
-            ])
-        )
-        # Save as draft
-        try:
-            listing = await listing_service.create_draft(
-                tg_id,
-                current_rank=draft["current_rank"],
-                peak_rank=draft["peak_rank"],
-                hero_count=draft["hero_count"],
-                skin_count=draft["skin_count"],
-                account_links=draft["account_links"],
-                price=draft["price"],
-                description=draft["description"] or "",
-            )
-            await listing_service.save_media(listing.id, draft["media"])
-        except Exception:
-            await cb.message.answer("❌ Draftni saqlab bo'lmadi. Qaytadan urinib ko'ring.")
-            await state.clear()
-            return
 
-    # Publish
-    await safe_answer(cb, "⏳ Joylanmoqda...")
+    # Create and persist the draft exactly once. This is also needed when
+    # the user must top up their balance and continue later.
     try:
         listing = await listing_service.create_draft(
             tg_id,
@@ -321,10 +291,29 @@ async def publish(cb: CallbackQuery, state: FSMContext):
         )
         await listing_service.save_media(listing.id, draft["media"])
     except Exception as e:
-        await cb.message.answer(f"❌ Xatolik: {e}")
+        await cb.message.answer(f"❌ Draftni saqlab bo'lmadi: {e}")
         await state.clear()
         return
 
+    bal = await balance_service.get_balance(tg_id)
+    if bal < price:
+        await safe_answer(cb, "Balans yetarli emas", show_alert=False)
+        await cb.message.answer(
+            "❌ <b>Balans yetarli emas</b>\n\n"
+            f"E'lon joylash: <b>{price:,} so'm</b>\n".replace(",", " ") +
+            f"Balansingiz: <b>{bal:,} so'm</b>\n\n".replace(",", " ") +
+            "Avval balansingizni to'ldiring.\n\n"
+            "Draft saqlandi — balans to'ldirilgach davom ettirishingiz mumkin.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💰 BALANSNI TO'LDIRISH", callback_data=f"bal_deposit:{listing.id}")],
+            ])
+        )
+        await state.clear()
+        return
+
+    # Publish the persisted draft. activate_and_publish performs the balance
+    # debit and refunds automatically if channel publication fails.
+    await safe_answer(cb, "⏳ Joylanmoqda...")
     ok, msg = await listing_service.activate_and_publish(listing.id, tg_id)
     if ok:
         await cb.message.answer(
