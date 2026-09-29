@@ -127,7 +127,7 @@ async def orders(request):
         rows=(await s.execute(select(MarketplaceOrder,Listing).join(Listing,Listing.id==MarketplaceOrder.listing_id)
                               .where((MarketplaceOrder.buyer_id==u.id)|(MarketplaceOrder.seller_id==u.id))
                               .order_by(MarketplaceOrder.created_at.desc()).limit(50))).all()
-        return _json(request,{"items":[{"id:o.id,"listingId:o.listing_id,"priceVr":o.price_vr,"status":o.status,
+        return _json(request,{"items":[{"id":o.id,"listingId":o.listing_id,"priceVr":o.price_vr,"status":o.status,
                                        "role":"BUYER" if o.buyer_id==u.id else "SELLER","title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin"}
                                       for o,l in rows]})
 
