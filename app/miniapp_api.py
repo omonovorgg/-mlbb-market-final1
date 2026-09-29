@@ -207,20 +207,70 @@ async def buy_diamonds(request):
 
 
 async def game(request):
-    tg=_init_user(_raw(request)); body=await request.json(); name=str(body.get("game","coin_flip")); stake=max(1,min(int(body.get("stake",25)),1000)); tg_id=int(tg["id"])
+    tg=_init_user(_raw(request)); body=await request.json()
+    name=str(body.get("game","coin_flip"))
+    currency=str(body.get("currency","game")).lower()
+    stake_raw=int(body.get("stake",25))
+    # Game coin remains the default/backward-compatible mode. VR mode is optional
+    # and uses the same server-side game engine; VR cannot be withdrawn to so'm.
+    if currency not in {"game","vr"}:
+        raise web.HTTPBadRequest(text="Unknown currency")
+    max_stake=5000 if currency=="vr" else 1000
+    min_stake=10 if currency=="vr" else 1
+    stake=max(min_stake,min(stake_raw,max_stake))
+    tg_id=int(tg["id"])
+
     async with async_session() as s:
         u=await s.scalar(select(User).where(User.telegram_id==tg_id))
-        if not u or (u.game_coins or 0)<stake: raise web.HTTPBadRequest(text="Coin yetarli emas")
-        u.game_coins-=stake; r=random.random()
-        if name=="coin_flip": reward=stake*2 if r<.47 else 0; result="WIN" if reward else "LOSE"
-        elif name=="dice": n=random.randint(1,6); reward=stake*3 if n>=5 else 0; result=f"Dice: {n}"
-        elif name=="wheel": reward=random.choice([0,stake,stake*2,stake*3,stake*5]); result=f"Wheel: +{reward}"
-        elif name=="mines": reward=stake*2 if r<.42 else 0; result="SAFE" if reward else "MINE"
-        else: raise web.HTTPBadRequest(text="Unknown game")
-        u.game_coins+=reward
-        await s.execute(text("INSERT INTO game_events (user_id, game, stake, reward) VALUES (:u,:g,:s,:r)"),{"u":tg_id,"g":name,"s":stake,"r":reward})
+        balance=(u.vr_balance or 0) if currency=="vr" else (u.game_coins or 0)
+        if not u or balance<stake:
+            raise web.HTTPBadRequest(text=f"{'VR' if currency=='vr' else 'Coin'} yetarli emas")
+
+        if currency=="vr":
+            u.vr_balance-=stake
+        else:
+            u.game_coins-=stake
+
+        r=random.random()
+        if name=="coin_flip":
+            reward=stake*2 if r<.47 else 0
+            result="WIN" if reward else "LOSE"
+        elif name=="dice":
+            n=random.randint(1,6)
+            reward=stake*3 if n>=5 else 0
+            result=f"Dice: {n}"
+        elif name=="wheel":
+            multiplier=random.choice([0,1,2,3,5])
+            reward=stake*multiplier
+            result=f"Wheel: {multiplier}x"
+        elif name=="mines":
+            reward=stake*2 if r<.42 else 0
+            result="SAFE" if reward else "MINE"
+        else:
+            raise web.HTTPBadRequest(text="Unknown game")
+
+        if currency=="vr":
+            u.vr_balance+=reward
+            final_balance=u.vr_balance
+        else:
+            u.game_coins+=reward
+            final_balance=u.game_coins
+
+        await s.execute(
+            text("INSERT INTO game_events (user_id, game, stake, reward) VALUES (:u,:g,:s,:r)"),
+            {"u":tg_id,"g":f"{currency}:{name}","s":stake,"r":reward},
+        )
         await s.commit()
-        return _json(request, {"ok":True,"result":result,"reward":reward,"coins":u.game_coins})
+        return _json(request,{
+            "ok":True,
+            "currency":currency,
+            "result":result,
+            "reward":reward,
+            "stake":stake,
+            "balance":final_balance,
+            "coins":u.game_coins,
+            "vr":u.vr_balance,
+        })
 
 
 async def admin(request):
