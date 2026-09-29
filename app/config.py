@@ -35,6 +35,11 @@ def _normalize_db_url(raw: str) -> str:
                 if "ssl" not in existing_keys:
                     normalized_query.append(("ssl", value))
                     existing_keys.add("ssl")
+            elif key == "channel_binding":
+                # asyncpg/SQLAlchemy compatibility: Neon may append
+                # channel_binding=require, but this query parameter is
+                # not accepted by the installed asyncpg dialect.
+                continue
             else:
                 normalized_query.append((key, value))
                 existing_keys.add(key)
