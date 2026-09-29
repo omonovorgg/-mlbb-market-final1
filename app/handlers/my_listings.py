@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from app.keyboards.user_kb import (
     my_listings_kb, listing_actions_kb, confirm_kb, back_kb
 )
-from app.utils.formatters import format_money
+from app.utils.formatters import format_money, format_listing_channel_text
 from app.services.listing_service import listing_service
 from app.services.settings_service import settings_service
 from app.services.balance_service import balance_service
@@ -67,10 +67,7 @@ async def open_listing(cb: CallbackQuery):
         await safe_answer(cb, "Ruxsat yo'q", show_alert=True)
         return
     text = (
-        f"📦 <b>E'LON #{l.id}</b>\n\n"
-        f"💰 {format_money(l.price)}\n"
-        f"🏆 {l.current_rank} → ⭐ {l.peak_rank}\n"
-        f"🦸 {l.hero_count} Hero • 🎨 {l.skin_count} Skin\n"
+        f"{format_listing_channel_text(l, u)}\n\n"
         f"📊 Holat: <b>{l.status}</b>\n"
         f"✏️ Bepul edit: {'✅ ishlatilgan' if l.free_edit_used else '⬜ mavjud'}\n"
         f"💰 Bepul narx o'zgartirish: {'✅ ishlatilgan' if l.free_price_change_used else '⬜ mavjud'}"
@@ -164,11 +161,15 @@ async def start_edit(cb: CallbackQuery, state: FSMContext):
     await state.update_data(edit_listing_id=lid, edit_is_free=is_free, edit_price=price)
     await state.set_state(EditListing.choosing_field)
     kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 E'lon turi", callback_data="editf:deal_type")],
         [InlineKeyboardButton(text="🏆 Rank", callback_data="editf:current_rank")],
         [InlineKeyboardButton(text="⭐ Peak", callback_data="editf:peak_rank")],
-        [InlineKeyboardButton(text="🦸 Hero", callback_data="editf:hero_count")],
-        [InlineKeyboardButton(text="🎨 Skin", callback_data="editf:skin_count")],
-        [InlineKeyboardButton(text="🔗 Linklar", callback_data="editf:account_links")],
+        [InlineKeyboardButton(text="🦸 Hero soni", callback_data="editf:hero_count")],
+        [InlineKeyboardButton(text="🎨 Skin soni", callback_data="editf:skin_count")],
+        [InlineKeyboardButton(text="🎯 Win Rate", callback_data="editf:win_rate")],
+        [InlineKeyboardButton(text="🦸 Main Hero", callback_data="editf:main_hero")],
+        [InlineKeyboardButton(text="💎 Kolleksiya", callback_data="editf:collection_value")],
+        [InlineKeyboardButton(text="🔗 Ulanganlar", callback_data="editf:account_links")],
         [InlineKeyboardButton(text="📷 Media", callback_data="editf:media")],
         [InlineKeyboardButton(text="📝 Tavsif", callback_data="editf:description")],
         [InlineKeyboardButton(text="⬅️ Bekor", callback_data="cancel_fsm")],
@@ -184,7 +185,13 @@ async def choose_edit_field(cb: CallbackQuery, state: FSMContext):
     await state.update_data(edit_field=field)
     await state.set_state(EditListing.new_value)
     from app.keyboards.user_kb import ranks_kb, links_kb, media_done_kb, cancel_kb
-    if field == "current_rank":
+    if field == "deal_type":
+        await safe_edit(cb, "🔥 E'lon turini tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔥 SOTILADI", callback_data="editdeal:SALE")],
+            [InlineKeyboardButton(text="🔄 ABMEN QILINADI", callback_data="editdeal:EXCHANGE")],
+            [InlineKeyboardButton(text="❌ Bekor", callback_data="cancel_fsm")],
+        ]))
+    elif field == "current_rank":
         await safe_edit(cb, "🏆 Yangi hozirgi rank:", reply_markup=ranks_kb("editcr"))
     elif field == "peak_rank":
         await safe_edit(cb, "⭐ Yangi peak rank:", reply_markup=ranks_kb("editpr"))
@@ -192,12 +199,27 @@ async def choose_edit_field(cb: CallbackQuery, state: FSMContext):
         await safe_edit(cb, "🦸 Yangi hero soni:", reply_markup=cancel_kb())
     elif field == "skin_count":
         await safe_edit(cb, "🎨 Yangi skin soni:", reply_markup=cancel_kb())
+    elif field == "win_rate":
+        await safe_edit(cb, "🎯 Yangi Win Rate:", reply_markup=cancel_kb())
+    elif field == "main_hero":
+        await safe_edit(cb, "🦸 Yangi Main Hero:", reply_markup=cancel_kb())
+    elif field == "collection_value":
+        await safe_edit(cb, "💎 Yangi kolleksiya qiymati:", reply_markup=cancel_kb())
     elif field == "account_links":
         await safe_edit(cb, "🔗 Yangi linklar:", reply_markup=links_kb([]))
     elif field == "media":
+        await state.update_data(edit_media=[])
         await safe_edit(cb, "📷 Yangi media (1-2 rasm yoki 1 video):", reply_markup=media_done_kb())
     elif field == "description":
         await safe_edit(cb, "📝 Yangi tavsif (yoki - yuboring):", reply_markup=cancel_kb())
+    await safe_answer(cb)
+
+
+@router.callback_query(F.data.startswith("editdeal:"), StateFilter(EditListing.new_value))
+async def edit_set_deal(cb: CallbackQuery, state: FSMContext):
+    value = cb.data.split(":", 1)[1]
+    await state.update_data(edit_value=value)
+    await safe_edit(cb, "✅ E'lon turi saqlandi. Tasdiqlaysizmi?", reply_markup=confirm_kb("applyedit"))
     await safe_answer(cb)
 
 
@@ -224,12 +246,21 @@ async def edit_set_text(msg: Message, state: FSMContext):
     data = await state.get_data()
     field = data["edit_field"]
     from app.utils.validators import parse_positive_int
-    if field in ("hero_count", "skin_count"):
+    if field in ("hero_count", "skin_count", "collection_value"):
         v = parse_positive_int(msg.text, 1, 10000)
         if v is None:
             await msg.answer("❌ To'g'ri son kiriting.")
             return
         await state.update_data(edit_value=v)
+    elif field == "win_rate":
+        try:
+            v = float(msg.text.strip().replace(",", "."))
+        except ValueError:
+            v = -1
+        if not 0 <= v <= 100:
+            await msg.answer("❌ Win Rate 0 dan 100 gacha bo'lishi kerak.")
+            return
+        await state.update_data(edit_value=f"{v:.1f}".rstrip("0").rstrip("."))
     elif field == "description":
         text = msg.text.strip()
         await state.update_data(edit_value=None if text == "-" else text[:800])
