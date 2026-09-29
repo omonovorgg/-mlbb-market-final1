@@ -398,7 +398,8 @@ async def confirm_price_change(cb: CallbackQuery, state: FSMContext):
     if is_free:
         await listing_service.update_fields(lid, cb.from_user.id, free_price_change_used=True)
 
-    if not is_free:        u = await user_service.get_by_tg(cb.from_user.id)
+    if not is_free:
+        u = await user_service.get_by_tg(cb.from_user.id)
         await transaction_service.create(
             user_id=u.id, amount=-price, ttype="price_change",
             description=f"E'lon #{lid} narxi o'zgartirildi", related_listing_id=lid
