@@ -125,18 +125,31 @@ async def top_listing(cb: CallbackQuery):
 async def confirm_top(cb: CallbackQuery):
     lid = int(cb.data.split(":", 2)[2])
     price = await settings_service.get_int("top_price", 10000)
+    l = await listing_service.get(lid)
+    u = await user_service.get_by_tg(cb.from_user.id)
+    if not l or not u or l.user_id != u.id or l.status != "ACTIVE":
+        await safe_edit(cb, "❌ E'lon TOP qilish uchun faol bo'lishi kerak.")
+        await safe_answer(cb)
+        return
     ok = await balance_service.atomic_debit(cb.from_user.id, price)
     if not ok:
         await safe_edit(cb, "❌ Balans yetarli emas")
         await safe_answer(cb)
         return
-    await listing_service.update_fields(lid, cb.from_user.id, is_top=True)
-    u = await user_service.get_by_tg(cb.from_user.id)
+    activated = await listing_service.activate_top(lid, cb.from_user.id)
+    if not activated:
+        await balance_service.atomic_credit(cb.from_user.id, price)
+        await safe_edit(cb, "❌ TOP qilishda xatolik. Pul qaytarildi.")
+        await safe_answer(cb)
+        return
     await transaction_service.create(
         user_id=u.id, amount=-price, ttype="top_purchase",
-        description=f"E'lon #{lid} TOP qilindi", related_listing_id=lid
+        description=f"E'lon #{lid} TOP 24 soat qilindi", related_listing_id=lid
     )
-    await safe_edit(cb, "🔥 E'lon TOP qilindi!")
+    # Original channel post is pinned; the hourly TOP advertisement is a separate post.
+    await channel_service.pin_listing(lid)
+    await channel_service.send_top_ad(lid)
+    await safe_edit(cb, "🔥 E'lon 24 SOAT TOP qilindi!\n📌 Kanal postiga qadandi.\n📢 TOP reklama har 1 soatda chiqadi.")
     await safe_answer(cb)
 
 
