@@ -242,6 +242,29 @@ async def _setting_int(key, default):
         except Exception: return default
 
 
+async def lucky_claim(request):
+    """Deterministic daily bonus: one free claim per UTC day, no stake and no randomness."""
+    tg = _init_user(_raw(request)); tg_id = int(tg["id"])
+    bonus = 1000
+    today = datetime.utcnow().date()
+    async with async_session() as s:
+        u = await s.scalar(select(User).where(User.telegram_id == tg_id))
+        if not u:
+            raise web.HTTPNotFound(text="User not found")
+        existing = await s.execute(text("SELECT id FROM lucky_spins WHERE user_id=:u AND spin_date=:d"), {"u": tg_id, "d": today})
+        if existing.first():
+            return _json(request, {"ok": False, "alreadyClaimed": True, "reward": 0, "balance": u.balance or 0})
+        u.balance = (u.balance or 0) + bonus
+        await s.execute(text("""
+            INSERT INTO lucky_spins (user_id, spin_date, reward_type, reward_value, reward_text)
+            VALUES (:u, :d, 'DAILY_BONUS', :r, :t)
+        """), {"u": tg_id, "d": today, "r": bonus, "t": "1000 so'm daily bonus"})
+        await s.commit()
+    user = await user_service.get_by_tg(tg_id)
+    await transaction_service.create(user_id=user.id, amount=bonus, ttype="bonus", description="Lucky Wheel daily bonus")
+    return _json(request, {"ok": True, "alreadyClaimed": False, "reward": bonus, "balance": (user.balance or 0) + bonus})
+
+
 async def packages(request):
     async with async_session() as s:
         rows=(await s.execute(text("SELECT id, diamonds, bonus, price, active FROM diamond_packages WHERE active=TRUE ORDER BY price"))).mappings().all()
@@ -509,6 +532,7 @@ def register_miniapp_routes(app):
     app.router.add_get("/miniapp/me",user)
     app.router.add_get("/miniapp/listings",listings)
     app.router.add_get("/miniapp/packages",packages)
+    app.router.add_post("/miniapp/lucky/claim",lucky_claim)
     app.router.add_get("/miniapp/ads",ads)
     app.router.add_get("/miniapp/payment-info",payment_info)
     app.router.add_post("/miniapp/ads/{id}/click",ad_click)
