@@ -24,9 +24,6 @@ async def init_db():
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_vr_price INTEGER",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_level VARCHAR(16) NOT NULL DEFAULT 'NONE'",
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS promo_until TIMESTAMP",
-            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS price_som INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS discount_percent INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS payment_external_id VARCHAR(64)",
             """CREATE TABLE IF NOT EXISTS diamond_packages (
                 id SERIAL PRIMARY KEY,
                 diamonds INTEGER NOT NULL,
@@ -62,6 +59,9 @@ async def init_db():
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 UNIQUE(user_id, spin_date)
             )""",
+            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS price_som INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS discount_percent INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE marketplace_orders ADD COLUMN IF NOT EXISTS payment_external_id VARCHAR(64)",
             """CREATE TABLE IF NOT EXISTS marketplace_ads (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(160) NOT NULL,
