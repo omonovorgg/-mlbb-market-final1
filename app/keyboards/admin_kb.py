@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def admin_panel_kb() -> InlineKeyboardMarkup:
@@ -18,7 +18,6 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="ad:settings")],
         [InlineKeyboardButton(text="👮 Adminlar", callback_data="ad:admins"),
          InlineKeyboardButton(text="📝 Loglar", callback_data="ad:logs")],
-        [InlineKeyboardButton(text="🎮 Mini App Admin", web_app=WebAppInfo(url="https://mlbb-market.floot.app"))],
         [InlineKeyboardButton(text="⬅️ Yopish", callback_data="ad:close")],
     ])
 
