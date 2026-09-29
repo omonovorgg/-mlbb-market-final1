@@ -3,6 +3,7 @@ import hmac
 import json
 import random
 import time
+from datetime import datetime, timedelta
 from urllib.parse import parse_qsl
 
 from aiohttp import web
@@ -10,7 +11,7 @@ from sqlalchemy import select, text
 
 from app.config import config
 from app.database.db import async_session
-from app.database.models import User, Listing, ListingMedia, Admin, Setting
+from app.database.models import User, Listing, ListingMedia, Admin, Setting, MarketplaceOrder
 from app.services.balance_service import balance_service
 from app.services.transaction_service import transaction_service
 from app.services.user_service import user_service
@@ -47,14 +48,16 @@ async def user(request):
         if not u:
             raise web.HTTPNotFound(text="User not found")
         admin = int(tg["id"]) in config.super_admin_ids or await s.scalar(select(Admin).where(Admin.telegram_id == int(tg["id"])))
-        return _json(request, {"user":{"id":u.telegram_id,"username":u.username,"name":u.first_name,"balance":u.balance or 0,"diamonds":u.diamonds or 0,"coins":u.game_coins or 0,"admin":bool(admin)}})
+        return _json(request, {"user":{"id":u.telegram_id,"username":u.username,"name":u.first_name,"balance":u.balance or 0,"diamonds":u.diamonds or 0,"coins":u.game_coins or 0,"vr":u.vr_balance or 0,"admin":bool(admin)}})
 
 
 async def listings(request):
     q = request.query.get("q", "").lower().strip()
+    now = datetime.utcnow()
     async with async_session() as s:
         rows = (await s.execute(
-            select(Listing, User).join(User, User.id == Listing.user_id)
+            select(Listing, User)
+            .join(User, User.id == Listing.user_id)
             .where(Listing.status == "ACTIVE", Listing.marketplace_enabled.is_(True))
             .order_by(Listing.is_top.desc(), Listing.created_at.desc()).limit(100)
         )).all()
@@ -63,8 +66,122 @@ async def listings(request):
             hay=f"{l.current_rank} {l.peak_rank} {l.hero_count} {l.skin_count} {l.description or ''} {u.username or ''}".lower()
             if q and q not in hay: continue
             media=(await s.execute(select(ListingMedia).where(ListingMedia.listing_id==l.id))).scalars().all()
-            out.append({"id":l.id,"title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin","category":"Account","price":l.price,"seller":u.username or u.first_name or "Seller","badge":"TOP" if l.is_top else "Marketplace","rank":l.current_rank,"peakRank":l.peak_rank,"heroCount":l.hero_count,"skinCount":l.skin_count,"links":[x for x in (l.account_links or "").split(",") if x],"description":l.description or "","mediaCount":len(media)})
+            promo = l.promo_level if l.promo_until and l.promo_until > now else "NONE"
+            out.append({"id":l.id,"title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin",
+                        "category":"Account","price":l.price,"vrPrice":l.marketplace_vr_price or max(1,(int(l.price)+19)//20),
+                        "seller":u.username or u.first_name or "Seller","badge":promo if promo!="NONE" else ("TOP" if l.is_top else "Marketplace"),
+                        "promo":promo,"rank":l.current_rank,"peakRank":l.peak_rank,"heroCount":l.hero_count,"skinCount":l.skin_count,
+                        "links":[x for x in (l.account_links or "").split(",") if x],"description":l.description or "","mediaCount":len(media)})
         return _json(request, {"items":out})
+
+
+async def buy_vr(request):
+    tg=_init_user(_raw(request)); body=await request.json()
+    amount_vr=int(body.get("amountVr",0)); rate=await _setting_int("vr_som_rate",20)
+    if amount_vr < 50 or amount_vr > 100000 or amount_vr % 50 != 0:
+        raise web.HTTPBadRequest(text="VR miqdori 50 dan boshlanadi va 50 ga karrali bo'lishi kerak")
+    cost=amount_vr*rate; tg_id=int(tg["id"])
+    if not await balance_service.atomic_debit(tg_id,cost):
+        raise web.HTTPBadRequest(text="So'm balans yetarli emas")
+    async with async_session() as s:
+        u=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        if not u:
+            await balance_service.atomic_credit(tg_id,cost); raise web.HTTPBadRequest(text="User not found")
+        u.vr_balance=(u.vr_balance or 0)+amount_vr
+        await s.commit()
+    u2=await user_service.get_by_tg(tg_id)
+    await transaction_service.create(user_id=u2.id,amount=-cost,ttype="vr_purchase",
+                                     description=f"{amount_vr} VR sotib olindi")
+    return _json(request,{"ok":True,"vr":amount_vr,"cost":cost})
+
+
+async def ads(request):
+    async with async_session() as s:
+        rows=(await s.execute(text("SELECT id,title,description,target_url,active FROM marketplace_ads WHERE active=TRUE ORDER BY id DESC"))).mappings().all()
+    return _json(request,{"items":[dict(x) for x in rows]})
+
+
+async def promote_listing(request):
+    tg=_init_user(_raw(request)); body=await request.json()
+    lid=int(body.get("listingId",0)); tier=str(body.get("tier","TOP")).upper(); tg_id=int(tg["id"])
+    setting={"TOP":"promo_top_vr","VIP":"promo_vip_vr","ULTRA":"promo_ultra_vr"}.get(tier)
+    if not setting: raise web.HTTPBadRequest(text="Noto'g'ri promo")
+    cost=await _setting_int(setting,{"TOP":50,"VIP":100,"ULTRA":200}[tier])
+    hours={"TOP":24,"VIP":72,"ULTRA":168}[tier]
+    async with async_session() as s:
+        u=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        l=await s.get(Listing,lid)
+        if not u or not l or l.user_id != u.id: raise web.HTTPForbidden(text="Bu e'lon sizniki emas")
+        if l.status!="ACTIVE" or not l.marketplace_enabled: raise web.HTTPBadRequest(text="E'lon Marketplace'da faol emas")
+        if (u.vr_balance or 0)<cost: raise web.HTTPBadRequest(text="VR yetarli emas")
+        u.vr_balance-=cost; l.promo_level=tier; l.promo_until=datetime.utcnow()+timedelta(hours=hours); l.is_top=True
+        await s.commit()
+    return _json(request,{"ok":True,"tier":tier,"cost":cost,"hours":hours})
+
+
+async def orders(request):
+    tg=_init_user(_raw(request)); tg_id=int(tg["id"])
+    async with async_session() as s:
+        u=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        if not u: raise web.HTTPNotFound(text="User not found")
+        rows=(await s.execute(select(MarketplaceOrder,Listing).join(Listing,Listing.id==MarketplaceOrder.listing_id)
+                              .where((MarketplaceOrder.buyer_id==u.id)|(MarketplaceOrder.seller_id==u.id))
+                              .order_by(MarketplaceOrder.created_at.desc()).limit(50))).all()
+        return _json(request,{"items":[{"id:o.id,"listingId:o.listing_id,"priceVr":o.price_vr,"status":o.status,
+                                       "role":"BUYER" if o.buyer_id==u.id else "SELLER","title":f"{l.current_rank} • {l.hero_count} hero • {l.skin_count} skin"}
+                                      for o,l in rows]})
+
+
+async def buy_listing(request):
+    tg=_init_user(_raw(request)); body=await request.json(); lid=int(body.get("listingId",0)); tg_id=int(tg["id"])
+    async with async_session() as s:
+        buyer=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        l=await s.get(Listing,lid)
+        if not buyer or not l: raise web.HTTPNotFound(text="E'lon topilmadi")
+        seller=await s.get(User,l.user_id)
+        if not seller or seller.id==buyer.id: raise web.HTTPBadRequest(text="O'zingizning e'loningizni sotib olib bo'lmaydi")
+        if l.status!="ACTIVE" or not l.marketplace_enabled: raise web.HTTPBadRequest(text="E'lon faol emas")
+        existing=await s.scalar(select(MarketplaceOrder).where(MarketplaceOrder.listing_id==lid,MarketplaceOrder.status=="PENDING"))
+        if existing: raise web.HTTPBadRequest(text="Bu e'lon bo'yicha allaqachon buyurtma bor")
+        price=int(l.marketplace_vr_price or max(1,(int(l.price)+19)//20))
+        if (buyer.vr_balance or 0)<price: raise web.HTTPBadRequest(text=f"VR yetarli emas: {price} VR kerak")
+        buyer.vr_balance-=price
+        o=MarketplaceOrder(listing_id=lid,buyer_id=buyer.id,seller_id=seller.id,price_vr=price,status="PENDING")
+        s.add(o); await s.commit(); await s.refresh(o)
+        return _json(request,{"ok":True,"orderId":o.id,"priceVr":price,"status":"PENDING"})
+
+
+async def confirm_order(request):
+    tg=_init_user(_raw(request)); oid=int(request.match_info["id"]); tg_id=int(tg["id"])
+    async with async_session() as s:
+        seller=await s.scalar(select(User).where(User.telegram_id==tg_id))
+        o=await s.get(MarketplaceOrder,oid)
+        if not seller or not o or o.seller_id!=seller.id: raise web.HTTPForbidden(text="Faqat sotuvchi tasdiqlashi mumkin")
+        if o.status!="PENDING": raise web.HTTPBadRequest(text="Buyurtma faol emas")
+        l=await s.get(Listing,o.listing_id); buyer=await s.get(User,o.buyer_id)
+        if not l or not buyer: raise web.HTTPBadRequest(text="Buyurtma ma'lumoti topilmadi")
+        seller.vr_balance=(seller.vr_balance or 0)+o.price_vr
+        o.status="COMPLETED"; o.confirmed_at=datetime.utcnow(); l.status="SOLD"; l.marketplace_enabled=False; l.sold_at=datetime.utcnow()
+        await s.commit()
+    return _json(request,{"ok":True,"status":"COMPLETED"})
+
+
+async def cancel_order(request):
+    tg=_init_user(_raw(request)); oid=int(request.match_info["id"]); tg_id=int(tg["id"])
+    async with async_session() as s:
+        u=await s.scalar(select(User).where(User.telegram_id==tg_id)); o=await s.get(MarketplaceOrder,oid)
+        if not u or not o or (o.buyer_id!=u.id and o.seller_id!=u.id): raise web.HTTPForbidden(text="Ruxsat yo'q")
+        if o.status!="PENDING": raise web.HTTPBadRequest(text="Buyurtma faol emas")
+        buyer=await s.get(User,o.buyer_id); buyer.vr_balance=(buyer.vr_balance or 0)+o.price_vr; o.status="CANCELLED"
+        await s.commit()
+    return _json(request,{"ok":True,"status":"CANCELLED"})
+
+
+async def _setting_int(key, default):
+    async with async_session() as s:
+        v=await s.scalar(select(Setting).where(Setting.key==key))
+        try: return int(v.value) if v else default
+        except Exception: return default
 
 
 async def packages(request):
@@ -217,6 +334,13 @@ def register_miniapp_routes(app):
     app.router.add_get("/miniapp/me",user)
     app.router.add_get("/miniapp/listings",listings)
     app.router.add_get("/miniapp/packages",packages)
+    app.router.add_get("/miniapp/ads",ads)
+    app.router.add_post("/miniapp/buy-vr",buy_vr)
+    app.router.add_post("/miniapp/promote",promote_listing)
+    app.router.add_get("/miniapp/orders",orders)
+    app.router.add_post("/miniapp/buy-listing",buy_listing)
+    app.router.add_post("/miniapp/orders/{id}/confirm",confirm_order)
+    app.router.add_post("/miniapp/orders/{id}/cancel",cancel_order)
     app.router.add_post("/miniapp/purchase-diamonds",buy_diamonds)
     app.router.add_post("/miniapp/game",game)
     app.router.add_get("/miniapp/admin",admin)
