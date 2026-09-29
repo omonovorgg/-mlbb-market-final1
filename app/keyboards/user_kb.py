@@ -18,6 +18,14 @@ def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
+def deal_type_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 SOTILADI", callback_data="deal_type:SALE")],
+        [InlineKeyboardButton(text="🔄 ABMEN QILINADI", callback_data="deal_type:EXCHANGE")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_fsm")],
+    ])
+
+
 def cancel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_fsm")]
@@ -64,14 +72,18 @@ def preview_kb() -> InlineKeyboardMarkup:
 
 def preview_edit_kb() -> InlineKeyboardMarkup:
     fields = [
-        ("Rank", "edit_field:current_rank"),
-        ("Peak rank", "edit_field:peak_rank"),
-        ("Hero", "edit_field:hero_count"),
-        ("Skin", "edit_field:skin_count"),
-        ("Linklar", "edit_field:account_links"),
-        ("Media", "edit_field:media"),
-        ("Narx", "edit_field:price"),
-        ("Tavsif", "edit_field:description"),
+        ("🔥 E'lon turi", "edit_field:deal_type"),
+        ("🏆 Rank", "edit_field:current_rank"),
+        ("⭐ Peak rank", "edit_field:peak_rank"),
+        ("🦸 Hero soni", "edit_field:hero_count"),
+        ("🎨 Skin soni", "edit_field:skin_count"),
+        ("🎯 Win Rate", "edit_field:win_rate"),
+        ("🦸 Main Hero", "edit_field:main_hero"),
+        ("💎 Kolleksiya", "edit_field:collection_value"),
+        ("🔗 Ulanganlar", "edit_field:account_links"),
+        ("🖼 Media", "edit_field:media"),
+        ("💰 Narx", "edit_field:price"),
+        ("📝 Tavsif", "edit_field:description"),
     ]
     rows = [[InlineKeyboardButton(text=f"✏️ {t}", callback_data=cb)] for t, cb in fields]
     rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="preview_back")])
