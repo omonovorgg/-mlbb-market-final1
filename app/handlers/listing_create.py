@@ -325,6 +325,34 @@ async def publish(cb: CallbackQuery, state: FSMContext):
     await state.clear()
 
 
+@router.callback_query(F.data == "publish_marketplace", StateFilter(ListingCreate.preview))
+async def publish_marketplace(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    draft = data["draft"]
+    if not all([draft["current_rank"], draft["peak_rank"], draft["hero_count"], draft["skin_count"], draft["price"], draft["media"]]):
+        await safe_answer(cb, "❌ Ma'lumotlar to'liq emas", show_alert=True)
+        return
+    try:
+        listing = await listing_service.create_draft(
+            cb.from_user.id,
+            current_rank=draft["current_rank"], peak_rank=draft["peak_rank"],
+            hero_count=draft["hero_count"], skin_count=draft["skin_count"],
+            account_links=draft["account_links"], price=draft["price"],
+            description=draft["description"] or ""
+        )
+        await listing_service.save_media(listing.id, draft["media"])
+        ok, msg = await listing_service.activate_marketplace(listing.id, cb.from_user.id)
+        if ok:
+            await safe_answer(cb, "✅ Marketplace'ga joylandi")
+            await cb.message.answer(f"🛒 <b>E'lon #{listing.id} Marketplace'ga joylandi.</b>\nEndi Mini App ichida ko'rinadi.")
+        else:
+            await safe_answer(cb, "❌ Balans yetarli emas", show_alert=True)
+            await cb.message.answer(f"❌ Marketplace tarifi to'lanmadi: {msg}")
+    except Exception:
+        await safe_answer(cb, "❌ Server xatoligi", show_alert=True)
+    await state.clear()
+
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
