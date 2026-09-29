@@ -3,12 +3,23 @@ from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
 load_dotenv()
-def _split_ids(raw: str) -> List[int]: return [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
+
+def _split_ids(raw: str) -> List[int]:
+    return [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
+
 def _normalize_db_url(raw: str) -> str:
     raw=(raw or "").strip()
-    if raw.startswith("postgres://"): return "postgresql+asyncpg://"+raw[11:]
-    if raw.startswith("postgresql://"): return "postgresql+asyncpg://"+raw[13:]
-    return raw
+    if not raw or raw.startswith("psql "): return ""
+    if raw.startswith("postgres://"): return "postgresql+asyncpg://"+raw[len("postgres://"):]
+    if raw.startswith("postgresql://"): return "postgresql+asyncpg://"+raw[len("postgresql://"):]
+    if raw.startswith("postgresql+asyncpg://") or raw.startswith("sqlite+aiosqlite://"): return raw
+    return ""
+
+def _db_url() -> str:
+    neon=_normalize_db_url(os.getenv("DATABASE_URL",""))
+    if neon: return neon
+    return _normalize_db_url(os.getenv("DB_URL","")) or "sqlite+aiosqlite:///./mlbb_market.db"
+
 @dataclass
 class Config:
     bot_token:str=os.getenv("BOT_TOKEN","")
@@ -16,10 +27,11 @@ class Config:
     channel_id:int=int(os.getenv("CHANNEL_ID","0") or 0)
     channel_username:str=os.getenv("CHANNEL_USERNAME","")
     support_username:str=os.getenv("SUPPORT_USERNAME","@support")
-    db_url:str=_normalize_db_url(os.getenv("DATABASE_URL") or os.getenv("DB_URL",""))
+    db_url:str=_db_url()
     port:int=int(os.getenv("PORT","8080"))
     webhook_url:str=os.getenv("WEBHOOK_URL","")
     deposit_auto_confirm_minutes:int=int(os.getenv("DEPOSIT_AUTO_CONFIRM_MINUTES","30") or 30)
+
 config=Config()
 DEFAULT_SETTINGS={"listing_create_price":"2000","listing_edit_price":"2000","price_change_price":"2000","free_edit_count":"1","free_price_change_count":"1","support_username":config.support_username,"channel_id":str(config.channel_id),"channel_username":config.channel_username,"listing_expiration_days":"30","maintenance_mode":"0","top_price":"10000"}
 RANK_OPTIONS=["Warrior","Elite","Master","Grandmaster","Epic","Legend","Mythic","Mythical Honor","Mythical Glory","Mythical Immortal"]
