@@ -256,6 +256,21 @@ async def edit_set_text(msg: Message, state: FSMContext):
     data = await state.get_data()
     field = data["edit_field"]
     from app.utils.validators import parse_positive_int
+    if field == "_price":
+        v = parse_positive_int(msg.text, 1000, 1_000_000_000)
+        if v is None:
+            await msg.answer("❌ To'g'ri narx kiriting.")
+            return
+        lid = data["price_listing_id"]
+        l = await listing_service.get(lid)
+        free_count = await settings_service.get_int("free_price_change_count", 1)
+        price = await settings_service.get_int("price_change_price", 2000)
+        is_free = (not l.free_price_change_used) and free_count >= 1
+        await state.update_data(edit_value=v, edit_is_free=is_free, edit_price=price, edit_field="price")
+        cost = "🆓 Bepul" if is_free else f"💰 {price:,} so'm".replace(",", " ")
+        await msg.answer(f"Yangi narx: <b>{format_money(v)}</b>\\n{cost}\\n\\nTasdiqlaysizmi?",
+                         reply_markup=confirm_kb(f"applyprice:{lid}"))
+        return
     if field in ("hero_count", "skin_count", "collection_value"):
         v = parse_positive_int(msg.text, 1, 10000)
         if v is None:
