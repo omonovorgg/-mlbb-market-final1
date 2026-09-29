@@ -308,7 +308,7 @@ async def admin(request):
         users=await s.scalar(text("SELECT count(*) FROM users"))
         active=await s.scalar(text("SELECT count(*) FROM listings WHERE status='ACTIVE'"))
         packages=(await s.execute(text("SELECT id,diamonds,bonus,price,active FROM diamond_packages ORDER BY price"))).mappings().all()
-        ads=(await s.execute(text("SELECT id,title,description,target_url,active FROM marketplace_ads ORDER BY id DESC"))).mappings().all()
+        ads=(await s.execute(text("SELECT id,title,description,target_url,image_url,pages,starts_at,ends_at,active,views,clicks FROM marketplace_ads ORDER BY id DESC"))).mappings().all()
         settings={x.key:x.value for x in (await s.execute(select(Setting))).scalars().all()}
         return _json(request,{"stats":{"users":users,"activeListings":active},"packages":[dict(x) for x in packages],"ads":[dict(x) for x in ads],"settings":settings})
 
