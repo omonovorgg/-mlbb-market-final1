@@ -52,6 +52,33 @@ class ListingService:
                 return []
             return list(await ListingRepo.user_listings(session, u.id, status))
 
+    async def activate_marketplace(self, listing_id: int, telegram_id: int) -> tuple[bool, str]:
+        price = await settings_service.get_int("marketplace_listing_price", 2000)
+        listing = await self.get(listing_id)
+        if not listing:
+            return False, "E'lon topilmadi"
+        if listing.status == "ACTIVE" and listing.marketplace_enabled:
+            return True, "Allaqachon Marketplace'da"
+        bal = await balance_service.get_balance(telegram_id)
+        if bal < price:
+            return False, f"INSUFFICIENT:{price}:{bal}"
+        if not await balance_service.atomic_debit(telegram_id, price):
+            return False, f"INSUFFICIENT:{price}:{bal}"
+        async with async_session() as session:
+            l = await ListingRepo.get(session, listing_id)
+            if not l:
+                await balance_service.atomic_credit(telegram_id, price)
+                return False, "E'lon topilmadi"
+            l.status = "ACTIVE"
+            l.marketplace_enabled = True
+            await session.commit()
+        u = await user_service.get_by_tg(telegram_id)
+        await transaction_service.create(
+            user_id=u.id, amount=-price, ttype="marketplace_listing",
+            description=f"Marketplace e'lon #{listing_id}", related_listing_id=listing_id
+        )
+        return True, "OK"
+
     async def activate_and_publish(self, listing_id: int, telegram_id: int) -> tuple[bool, str]:
         """
         Attempt to charge 2000, activate listing, publish to channel.
