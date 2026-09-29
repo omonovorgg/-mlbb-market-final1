@@ -6,7 +6,8 @@ from app.keyboards.user_kb import (
     my_listings_kb, listing_actions_kb, confirm_kb, back_kb
 )
 from app.utils.formatters import format_money
-from app.services.listing_service import listing_servicefrom app.services.settings_service import settings_service
+from app.services.listing_service import listing_service
+from app.services.settings_service import settings_service
 from app.services.balance_service import balance_service
 from app.services.transaction_service import transaction_service
 from app.services.channel_service import channel_service
