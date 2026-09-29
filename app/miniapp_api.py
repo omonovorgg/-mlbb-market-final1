@@ -245,8 +245,10 @@ async def _setting_int(key, default):
 async def lucky_claim(request):
     """Deterministic daily bonus: one free claim per UTC day, no stake and no randomness."""
     tg = _init_user(_raw(request)); tg_id = int(tg["id"])
-    bonus = 1000
     today = datetime.utcnow().date()
+    rewards = [500, 1000, 1500, 2000, 1000, 500]
+    day_index = (today - datetime(2026, 1, 1).date()).days % len(rewards)
+    bonus = rewards[day_index]
     async with async_session() as s:
         u = await s.scalar(select(User).where(User.telegram_id == tg_id))
         if not u:
@@ -555,3 +557,4 @@ def register_miniapp_routes(app):
     app.router.add_post("/miniapp/admin/packages",admin_package)
     app.router.add_delete("/miniapp/admin/packages/{id}",admin_package_delete)
     app.router.add_patch("/miniapp/admin/listings/{id}",admin_listing)
+    app.router.add_post("/miniapp/admin/listings/{id}",admin_listing)
