@@ -165,11 +165,18 @@ class ListingService:
             if not u or l.user_id != u.id:
                 return False
             l.status = "SOLD"
+            l.is_top = False
+            l.top_until = None
+            l.top_last_ad_at = None
             from datetime import datetime
             l.sold_at = datetime.utcnow()
             u.sold_listings = (u.sold_listings or 0) + 1
             await session.commit()
-        # Update channel post
+        # Update channel post and remove TOP pin
+        try:
+            await channel_service.unpin_listing(listing_id)
+        except Exception:
+            pass
         try:
             await channel_service.edit_listing(listing_id, sold=True)
         except Exception:
@@ -185,10 +192,17 @@ class ListingService:
             if not u or l.user_id != u.id:
                 return False
             l.status = "DELETED"
+            l.is_top = False
+            l.top_until = None
+            l.top_last_ad_at = None
             from datetime import datetime
             l.deleted_at = datetime.utcnow()
             await session.commit()
-        # Remove from channel
+        # Remove TOP pin and channel post
+        try:
+            await channel_service.unpin_listing(listing_id)
+        except Exception:
+            pass
         try:
             await channel_service.delete_listing_post(listing_id)
         except Exception:
