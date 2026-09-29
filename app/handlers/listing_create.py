@@ -61,6 +61,10 @@ async def set_deal_type(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     data["draft"]["deal_type"] = deal_type
     await state.update_data(draft=data["draft"])
+    if await _preview_edit_done(state):
+        await safe_edit(cb, format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        await safe_answer(cb)
+        return
     await state.set_state(ListingCreate.current_rank)
     await safe_edit(cb, "2️⃣ <b>Hozirgi rank</b>ni tanlang:", reply_markup=ranks_kb("cr"))
     await safe_answer(cb)
@@ -202,6 +206,10 @@ async def toggle_link(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "links_done", StateFilter(ListingCreate.account_links))
 async def links_done(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    if await _preview_edit_done(state):
+        await safe_edit(cb, format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        await safe_answer(cb)
+        return
     await state.set_state(ListingCreate.media)
     await state.update_data(draft=data["draft"])
     await safe_edit(
@@ -260,6 +268,10 @@ async def media_done(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if not validate_media_combo(data["draft"]["media"]):
         await safe_answer(cb, "❌ 1-2 rasm yoki 1 video yuboring", show_alert=True)
+        return
+    if await _preview_edit_done(state):
+        await safe_edit(cb, format_listing_preview(data["draft"]), reply_markup=preview_kb())
+        await safe_answer(cb)
         return
     await state.set_state(ListingCreate.price)
     await safe_edit(cb, "1️⃣1️⃣ <b>Narxni</b> so'mda kiriting (masalan: 350000):",
