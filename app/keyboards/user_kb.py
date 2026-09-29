@@ -1,5 +1,5 @@
 from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+    ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 )
 from app.config import RANK_OPTIONS, LINK_OPTIONS
 from typing import List
@@ -7,6 +7,7 @@ from typing import List
 
 def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
     rows = [
+        [KeyboardButton(text="🎮 MLBB MARKETPLACE", web_app=WebAppInfo(url="https://mlbb-market.floot.app"))],
         [KeyboardButton(text="➕ E'LON BERISH")],
         [KeyboardButton(text="🔎 AKKAUNTLAR QIDIRISH"), KeyboardButton(text="📋 E'LONLARIM")],
         [KeyboardButton(text="🔥 TOP E'LONLAR"), KeyboardButton(text="💰 BALANS")],
