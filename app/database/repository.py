@@ -4,7 +4,7 @@ from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import (
     User, Listing, ListingMedia, Transaction, Payment, Admin,
-    AdminLog, Setting, ChannelPost, Report, PromoCode, Card
+    AdminLog, Setting, ChannelPost, Report, PromoCode, Card, Giveaway, GiveawayParticipant
 )
 
 
@@ -388,3 +388,43 @@ class PromoRepo:
     async def all(session: AsyncSession):
         r = await session.execute(select(PromoCode).order_by(desc(PromoCode.created_at)))
         return r.scalars().all()
+
+class GiveawayRepo:
+    @staticmethod
+    async def get_active(session: AsyncSession) -> Optional[Giveaway]:
+        r = await session.execute(
+            select(Giveaway).where(Giveaway.active == True).order_by(desc(Giveaway.created_at)).limit(1)
+        )
+        return r.scalar_one_or_none()
+
+    @staticmethod
+    async def create(session: AsyncSession, video_file_id: str, text: str) -> Giveaway:
+        g = Giveaway(video_file_id=video_file_id, text=text, active=True)
+        session.add(g)
+        await session.flush()
+        return g
+
+    @staticmethod
+    async def participant_count(session: AsyncSession, giveaway_id: int) -> int:
+        r = await session.execute(
+            select(func.count(GiveawayParticipant.id)).where(GiveawayParticipant.giveaway_id == giveaway_id)
+        )
+        return int(r.scalar_one() or 0)
+
+    @staticmethod
+    async def is_participant(session: AsyncSession, giveaway_id: int, tg_id: int) -> bool:
+        r = await session.execute(
+            select(GiveawayParticipant.id).where(
+                GiveawayParticipant.giveaway_id == giveaway_id,
+                GiveawayParticipant.telegram_id == tg_id,
+            )
+        )
+        return r.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def add_participant(session: AsyncSession, giveaway_id: int, tg_id: int) -> bool:
+        if await GiveawayRepo.is_participant(session, giveaway_id, tg_id):
+            return False
+        session.add(GiveawayParticipant(giveaway_id=giveaway_id, telegram_id=tg_id))
+        await session.flush()
+        return True
