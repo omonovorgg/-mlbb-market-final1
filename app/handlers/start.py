@@ -81,6 +81,8 @@ async def _send_start(msg: Message, state: FSMContext):
     else:
         await msg.answer(text, reply_markup=main_menu_kb(is_admin=admin))
 
+    if not admin:
+        await giveaway_service.notify_if_needed(msg.bot, msg.from_user.id)
 
 @router.message(CommandStart())
 async def cmd_start(msg: Message, state: FSMContext):
@@ -102,6 +104,8 @@ async def check_subscription(cb: CallbackQuery, state: FSMContext):
             )
         else:
             await cb.message.answer(text, reply_markup=main_menu_kb(is_admin=admin))
+        if not admin:
+            await giveaway_service.notify_if_needed(cb.bot, cb.from_user.id)
     else:
         await cb.answer("❌ Avval kanalga obuna bo‘ling.", show_alert=True)
 
