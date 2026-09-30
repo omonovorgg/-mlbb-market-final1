@@ -8,12 +8,12 @@ from app.handlers.top import router as top_router
 from app.handlers.seller_check import router as seller_check_router
 from app.handlers.profile import router as profile_router
 from app.handlers.rules_help import router as rules_help_router
-from app.handlers.admin import admin_router
+from app.handlers.admin import admin_router\nfrom app.handlers.giveaway import router as giveaway_router
 
 
 def register_all_handlers() -> Router:
     root = Router()
-    root.include_router(admin_router)
+    root.include_router(admin_router)\n    root.include_router(giveaway_router)
     root.include_router(start_router)
     root.include_router(listing_create_router)
     root.include_router(my_listings_router)
