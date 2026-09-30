@@ -17,6 +17,7 @@ class User(Base):
     lucky_extra_spins:Mapped[int]=mapped_column(Integer,default=0)
     lucky_ad_credit:Mapped[int]=mapped_column(Integer,default=0)
     lucky_gift:Mapped[str|None]=mapped_column(String(128),nullable=True)
+    giveaway_notified_id:Mapped[int]=mapped_column(Integer,default=0)
     status:Mapped[str]=mapped_column(String(16),default="active")
     ban_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
     created_listings:Mapped[int]=mapped_column(Integer,default=0)
@@ -148,3 +149,24 @@ class MarketplaceOrder(Base):
     status:Mapped[str]=mapped_column(String(24),default="PENDING_PAYMENT",index=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     confirmed_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+
+
+class Giveaway(Base):
+    __tablename__="giveaways"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True,autoincrement=True)
+    video_file_id:Mapped[str]=mapped_column(String(512))
+    text:Mapped[str]=mapped_column(Text)
+    active:Mapped[bool]=mapped_column(Boolean,default=True,index=True)
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+    participants=relationship("GiveawayParticipant",back_populates="giveaway",cascade="all, delete-orphan")
+
+
+class GiveawayParticipant(Base):
+    __tablename__="giveaway_participants"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True,autoincrement=True)
+    giveaway_id:Mapped[int]=mapped_column(ForeignKey("giveaways.id"),index=True)
+    telegram_id:Mapped[int]=mapped_column(BigInteger,index=True)
+    joined_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+    giveaway=relationship("Giveaway",back_populates="participants")
+
+Index("uq_giveaway_participant", GiveawayParticipant.giveaway_id, GiveawayParticipant.telegram_id, unique=True)
