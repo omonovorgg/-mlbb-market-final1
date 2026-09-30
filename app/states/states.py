@@ -12,4 +12,4 @@ class BalanceStates(StatesGroup):
 class CardStates(StatesGroup):
     add_number=State(); add_holder=State(); add_bank=State(); edit_card=State()
 class AdminStates(StatesGroup):
-    user_search=State(); user_message=State(); user_balance_amount=State(); user_balance_reason=State(); broadcast_message=State(); broadcast_confirm=State(); pricing_edit=State(); listing_search=State(); channel_test=State(); promo_create_code=State(); promo_create_amount=State(); promo_create_limit=State(); promo_create_expire=State(); settings_edit=State(); report_note=State()
+    user_search=State(); user_message=State(); user_balance_amount=State(); user_balance_reason=State(); broadcast_message=State(); broadcast_confirm=State(); pricing_edit=State(); listing_search=State(); channel_test=State(); promo_create_code=State(); promo_create_amount=State(); promo_create_limit=State(); promo_create_expire=State(); settings_edit=State(); report_note=State(); giveaway_video=State(); giveaway_text=State(); giveaway_confirm=State()
