@@ -14,6 +14,7 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="🛡 Moderatsiya", callback_data="ad:moderation")],
         [InlineKeyboardButton(text="🚫 Bloklanganlar", callback_data="ad:blocked"),
          InlineKeyboardButton(text="🎁 Promo", callback_data="ad:promo")],
+        [InlineKeyboardButton(text="🎉 Konkurs", callback_data="ad:giveaway")],
         [InlineKeyboardButton(text="📢 Kanal", callback_data="ad:channel"),
          InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="ad:settings")],
         [InlineKeyboardButton(text="👮 Adminlar", callback_data="ad:admins"),
