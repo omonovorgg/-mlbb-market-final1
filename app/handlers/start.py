@@ -7,6 +7,7 @@ from app.utils.security import safe_edit
 from app.config import config
 from app.database.db import async_session
 from app.database.repository import AdminRepo
+from app.services.giveaway_service import giveaway_service
 
 router = Router(name="start")
 
