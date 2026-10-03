@@ -1,7 +1,8 @@
 import asyncio
 import logging
+import os
 
-from aiohttp import web
+from aiohttp import web, ClientSession, ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -52,6 +53,34 @@ async def health_server(port: int, dp: Dispatcher, bot: Bot):
     return runner
 
 
+async def keep_alive():
+    # Render Free spins down after 15 minutes without inbound traffic.
+    # This uses the existing aiohttp server; no second Flask server/thread
+    # is needed and no bot/webhook logic is changed.
+    base_url = (
+        os.getenv("RENDER_EXTERNAL_URL")
+        or config.webhook_url
+        or DEFAULT_WEBHOOK_BASE
+    ).rstrip("/")
+    health_url = f"{base_url}/health"
+    timeout = ClientTimeout(total=10)
+
+    async with ClientSession(timeout=timeout) as session:
+        while True:
+            await asyncio.sleep(50)
+            try:
+                async with session.get(health_url) as response:
+                    if response.status >= 400:
+                        logger.warning(
+                            "Keep-alive ping returned HTTP %s",
+                            response.status,
+                        )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("Keep-alive ping failed", exc_info=True)
+
+
 async def main():
     if not config.bot_token:
         raise RuntimeError("BOT_TOKEN sozlanmagan")
@@ -92,6 +121,7 @@ async def main():
         return True
 
     runner = await health_server(config.port, dp, bot)
+    keep_alive_task = asyncio.create_task(keep_alive())
 
     async def auto_loop():
         while True:
@@ -126,8 +156,13 @@ async def main():
         await asyncio.Event().wait()
     finally:
         task.cancel()
+        keep_alive_task.cancel()
         try:
             await task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await keep_alive_task
         except asyncio.CancelledError:
             pass
 
