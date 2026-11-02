@@ -67,7 +67,13 @@ async def giveaway_create(cb: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.giveaway_video, F.video)
 async def giveaway_video(msg: Message, state: FSMContext):
-    await state.update_data(giveaway_video=msg.video.file_id)
+    fid = msg.video.file_id
+    try:
+        from app.services.media_archive_service import media_archive_service
+        fid = await media_archive_service.archive_file(msg.bot, fid, "video") or fid
+    except Exception:
+        pass
+    await state.update_data(giveaway_video=fid)
     await state.set_state(AdminStates.giveaway_text)
     await msg.answer(
         "2/2 — Endi konkurs uchun matnni yuboring.\n\n"
