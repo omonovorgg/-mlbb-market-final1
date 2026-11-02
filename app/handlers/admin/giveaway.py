@@ -15,6 +15,7 @@ from app.keyboards.admin_kb import admin_back_kb
 from app.utils.security import safe_edit, safe_answer
 from app.services.giveaway_service import giveaway_service, giveaway_kb
 from app.services.settings_service import settings_service
+from app.config import config
 
 router = Router(name="admin_giveaway")
 router.message.filter(AdminFilter())
@@ -99,40 +100,104 @@ async def giveaway_create(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(AdminStates.giveaway_video)
     await safe_edit(cb,
-        "🎁 <b>Yangi konkurs</b>\n\n"
-        "Konkurs uchun <b>bitta xabarda</b> rasm yoki video va uning caption matnini yuboring.\n"
-        "Matnni alohida yuborish shart emas.",
-        reply_markup=admin_back_kb())
+        "🎁 <b>1/3 — Konkurs rasmi yoki videosini yuboring.</b>\n\n"
+        "Rasm yoki video yuboring. Xohlasangiz bu bosqichni o‘tkazib yuboring.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏭ O‘tkazib yuborish", callback_data="adg:skip:media")],
+            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="ad:giveaway")]
+        ]))
     await safe_answer(cb)
+
+
+async def _ask_description(target):
+    await target.answer(
+        "📝 <b>2/3 — Konkurs tavsifini yuboring.</b>\n\n"
+        "Matn yozing yoki o‘tkazib yuboring.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏭ O‘tkazib yuborish", callback_data="adg:skip:description")]
+        ])
+    )
+
+
+async def _ask_target_channel(target, state: FSMContext):
+    await state.set_state(AdminStates.giveaway_target_channel)
+    await target.answer(
+        "📢 <b>3/3 — Konkurs qaysi kanalga joylansin?</b>\n\n"
+        "@username yoki -100... ID yuboring. Avval sozlangan kanal ishlatilishi uchun o‘tkazib yuboring.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏭ O‘tkazib yuborish", callback_data="adg:skip:target")]
+        ])
+    )
+
+
+async def _show_giveaway_setup(target, state: FSMContext):
+    await state.set_state(AdminStates.giveaway_text)
+    data = await state.get_data()
+    await target.answer(await _setup_text(state), reply_markup=await _setup_kb(state))
 
 
 @router.message(AdminStates.giveaway_video, F.photo)
 @router.message(AdminStates.giveaway_video, F.video)
 async def giveaway_media(msg: Message, state: FSMContext):
     if msg.photo:
-        media_type = "photo"
-        file_id = msg.photo[-1].file_id
+        media_type, file_id = "photo", msg.photo[-1].file_id
     else:
-        media_type = "video"
-        file_id = msg.video.file_id
-    caption = (msg.html_text or "").strip()
-    if not caption:
-        await msg.answer("❌ Rasm yoki videoga caption matnini qo‘shib qayta yuboring.")
-        return
+        media_type, file_id = "video", msg.video.file_id
     try:
         from app.services.media_archive_service import media_archive_service
-        file_id = await media_archive_service.archive_file(msg.bot, file_id, media_type, caption) or file_id
+        file_id = await media_archive_service.archive_file(msg.bot, file_id, media_type) or file_id
     except Exception:
         pass
-    await state.update_data(giveaway_video=file_id, giveaway_media_type=media_type,
-                            giveaway_text=caption, giveaway_required_channels=[])
-    await state.set_state(AdminStates.giveaway_text)
-    await msg.answer(await _setup_text(state), reply_markup=await _setup_kb(state))
+    await state.update_data(giveaway_video=file_id, giveaway_media_type=media_type)
+    await state.set_state(AdminStates.giveaway_description)
+    await _ask_description(msg)
 
 
 @router.message(AdminStates.giveaway_video)
 async def giveaway_media_invalid(msg: Message):
-    await msg.answer("❌ Bitta xabarda rasm yoki video va caption yuboring.")
+    await msg.answer("Rasm yoki video yuboring yoki «O‘tkazib yuborish» tugmasini bosing.")
+
+
+@router.callback_query(F.data == "adg:skip:media", AdminStates.giveaway_video)
+async def giveaway_skip_media(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(giveaway_video="", giveaway_media_type="text")
+    await state.set_state(AdminStates.giveaway_description)
+    await cb.message.answer(
+        "📝 <b>2/3 — Konkurs tavsifini yuboring.</b>\n\nMatn yozing yoki o‘tkazib yuboring.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏭ O‘tkazib yuborish", callback_data="adg:skip:description")]
+        ])
+    )
+    await safe_answer(cb)
+
+
+@router.message(AdminStates.giveaway_description, F.text)
+async def giveaway_description(msg: Message, state: FSMContext):
+    await state.update_data(giveaway_text=(msg.html_text or "").strip())
+    await _ask_target_channel(msg, state)
+
+
+@router.message(AdminStates.giveaway_description)
+async def giveaway_description_invalid(msg: Message):
+    await msg.answer("Matn yuboring yoki «O‘tkazib yuborish» tugmasini bosing.")
+
+
+@router.callback_query(F.data == "adg:skip:description", AdminStates.giveaway_description)
+async def giveaway_skip_description(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(giveaway_text="")
+    await _ask_target_channel(cb.message, state)
+    await safe_answer(cb)
+
+
+@router.callback_query(F.data == "adg:skip:target", AdminStates.giveaway_target_channel)
+async def giveaway_skip_target(cb: CallbackQuery, state: FSMContext):
+    saved = await settings_service.get("giveaway_target_channel", "") or str(config.channel_id or "")
+    if not saved or saved == "0":
+        await cb.answer("Oldindan konkurs kanali sozlanmagan. Kanal ID yuboring.", show_alert=True)
+        return
+    await settings_service.set("giveaway_target_channel", saved)
+    await _show_giveaway_setup(cb.message, state)
+    await safe_answer(cb, "Saqlangan kanal ishlatiladi.")
 
 
 @router.callback_query(F.data == "adg:channels")
@@ -219,9 +284,7 @@ async def giveaway_target_finish(msg: Message, state: FSMContext):
             await msg.answer("❌ Botga kanalda administrator va post yuborish huquqi kerak.")
             return
         await settings_service.set("giveaway_target_channel", str(chat.id))
-        await state.set_state(AdminStates.giveaway_text)
-        await msg.answer("✅ Konkurs kanali saqlandi.\n\n" + await _setup_text(state),
-                         reply_markup=await _setup_kb(state))
+        await _show_giveaway_setup(msg, state)
     except Exception as exc:
         await msg.answer(f"❌ Kanalni ulab bo‘lmadi: <code>{str(exc)[:180]}</code>")
 
@@ -232,10 +295,12 @@ async def giveaway_preview(cb: CallbackQuery, state: FSMContext):
     text = data.get("giveaway_text", "")
     media_type = data.get("giveaway_media_type")
     file_id = data.get("giveaway_video")
-    if media_type == "photo":
-        await cb.message.answer_photo(file_id, caption=text)
-    else:
-        await cb.message.answer_video(file_id, caption=text)
+    if file_id and media_type == "photo":
+        await cb.message.answer_photo(file_id, caption=text or None)
+    elif file_id and media_type == "video":
+        await cb.message.answer_video(file_id, caption=text or None)
+    elif text:
+        await cb.message.answer(text)
     await safe_answer(cb, "Preview yuborildi.")
 
 
@@ -246,8 +311,11 @@ async def giveaway_publish(cb: CallbackQuery, state: FSMContext):
     file_id = data.get("giveaway_video")
     caption = (data.get("giveaway_text") or "").strip()
     media_type = data.get("giveaway_media_type", "video")
-    if not target or not file_id or not caption:
-        await cb.answer("Media, caption va konkurs kanali to‘liq bo‘lishi kerak.", show_alert=True)
+    if not target:
+        await cb.answer("Konkurs kanali sozlanmagan. Kanalni kiriting yoki avval sozlang.", show_alert=True)
+        return
+    if not file_id and not caption:
+        await cb.answer("Hech bo‘lmasa rasm/video yoki tavsif kiriting.", show_alert=True)
         return
     async with async_session() as session:
         if await GiveawayRepo.get_active(session):
