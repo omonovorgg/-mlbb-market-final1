@@ -362,11 +362,11 @@ async def giveaway_view(cb: CallbackQuery):
         return
     count = await giveaway_service.participant_count(giveaway.id)
     if giveaway.video_file_id and giveaway.media_type == "photo":
-        await cb.message.answer_photo(giveaway.video_file_id, caption=giveaway.text or None, reply_markup=giveaway_kb(count))
+        await cb.message.answer_photo(giveaway.video_file_id, caption=giveaway.text or None, reply_markup=giveaway_kb(count, (await cb.bot.get_me()).username or '', giveaway.id))
     elif giveaway.video_file_id and giveaway.media_type == "video":
-        await cb.message.answer_video(giveaway.video_file_id, caption=giveaway.text or None, reply_markup=giveaway_kb(count))
+        await cb.message.answer_video(giveaway.video_file_id, caption=giveaway.text or None, reply_markup=giveaway_kb(count, (await cb.bot.get_me()).username or '', giveaway.id))
     elif giveaway.text:
-        await cb.message.answer(giveaway.text, reply_markup=giveaway_kb(count))
+        await cb.message.answer(giveaway.text, reply_markup=giveaway_kb(count, (await cb.bot.get_me()).username or '', giveaway.id))
     await safe_answer(cb)
 
 
