@@ -59,10 +59,14 @@ class GiveawayService:
             raise ValueError("Konkurs kanali belgilanmagan")
         count = await self.participant_count(giveaway.id)
         markup = giveaway_kb(count)
-        if giveaway.media_type == "photo":
-            sent = await bot.send_photo(target, giveaway.video_file_id, caption=giveaway.text, reply_markup=markup)
+        if giveaway.video_file_id and giveaway.media_type == "photo":
+            sent = await bot.send_photo(target, giveaway.video_file_id, caption=giveaway.text or None, reply_markup=markup)
+        elif giveaway.video_file_id and giveaway.media_type == "video":
+            sent = await bot.send_video(target, giveaway.video_file_id, caption=giveaway.text or None, reply_markup=markup)
+        elif giveaway.text:
+            sent = await bot.send_message(target, giveaway.text, reply_markup=markup)
         else:
-            sent = await bot.send_video(target, giveaway.video_file_id, caption=giveaway.text, reply_markup=markup)
+            raise ValueError("Rasm/video yoki tavsifdan kamida bittasi kerak")
         async with async_session() as session:
             current = await session.get(Giveaway, giveaway.id)
             if current:
