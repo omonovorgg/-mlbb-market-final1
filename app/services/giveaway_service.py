@@ -1,17 +1,19 @@
-import asyncio
+import json
+import logging
 from typing import Optional
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from app.database.db import async_session
 from app.database.models import Giveaway
-from app.database.repository import GiveawayRepo, UserRepo
+from app.database.repository import GiveawayRepo
+
+logger = logging.getLogger(__name__)
 
 
 def giveaway_kb(participant_count: int, joined: bool = False) -> InlineKeyboardMarkup:
-    label = "✅ SIZ QATNASHYAPSIZ" if joined else "🎁 KONKURSDA QATNASHISH"
+    label = "✅ SIZ QATNASHYAPSIZ" if joined else "🎁 QATNASHISH"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data="giveaway:join")],
         [InlineKeyboardButton(text=f"👥 Qatnashchilar: {participant_count}", callback_data="giveaway:count")],
@@ -31,64 +33,46 @@ class GiveawayService:
         async with async_session() as session:
             return await GiveawayRepo.is_participant(session, giveaway_id, tg_id)
 
-    async def render_message(self, giveaway: Giveaway, tg_id: Optional[int] = None) -> tuple[str, InlineKeyboardMarkup]:
-        async with async_session() as session:
-            count = await GiveawayRepo.participant_count(session, giveaway.id)
-            joined = bool(tg_id and await GiveawayRepo.is_participant(session, giveaway.id, tg_id))
-        return giveaway.text, giveaway_kb(count, joined)
-
-    async def send_to_user(self, bot: Bot, tg_id: int, giveaway: Giveaway, mark_notified: bool = True) -> bool:
-        async with async_session() as session:
-            user = await UserRepo.get_by_tg(session, tg_id)
-            if not user:
-                return False
-            if user.giveaway_notified_id == giveaway.id:
-                return True
-
-        text, kb = await self.render_message(giveaway, tg_id)
+    async def required_channels(self, giveaway: Giveaway) -> list[str]:
         try:
-            await bot.send_video(tg_id, giveaway.video_file_id)
-            await bot.send_message(tg_id, text, reply_markup=kb)
-        except TelegramRetryAfter as e:
-            await asyncio.sleep(e.retry_after)
-            try:
-                await bot.send_video(tg_id, giveaway.video_file_id)
-                await bot.send_message(tg_id, text, reply_markup=kb)
-            except Exception:
-                return False
-        except (TelegramForbiddenError, TelegramBadRequest):
-            return False
+            value = json.loads(giveaway.required_channels or "[]")
+            return [str(x) for x in value]
         except Exception:
-            return False
+            return []
 
-        if mark_notified:
-            async with async_session() as session:
-                user = await UserRepo.get_by_tg(session, tg_id)
-                if user:
-                    user.giveaway_notified_id = giveaway.id
-                    await session.commit()
-        return True
+    async def missing_channels(self, bot: Bot, tg_id: int, giveaway: Giveaway) -> list[str]:
+        missing = []
+        for channel in await self.required_channels(giveaway):
+            try:
+                member = await bot.get_chat_member(channel, tg_id)
+                if member.status not in {"creator", "administrator", "member"} and not (
+                    member.status == "restricted" and getattr(member, "is_member", False)
+                ):
+                    missing.append(channel)
+            except Exception:
+                missing.append(channel)
+        return missing
 
-    async def broadcast(self, bot: Bot, giveaway: Giveaway) -> tuple[int, int]:
+    async def publish(self, bot: Bot, giveaway: Giveaway) -> int:
+        target = giveaway.target_channel_id
+        if not target:
+            raise ValueError("Konkurs kanali belgilanmagan")
+        count = await self.participant_count(giveaway.id)
+        markup = giveaway_kb(count)
+        if giveaway.media_type == "photo":
+            sent = await bot.send_photo(target, giveaway.video_file_id, caption=giveaway.text, reply_markup=markup)
+        else:
+            sent = await bot.send_video(target, giveaway.video_file_id, caption=giveaway.text, reply_markup=markup)
         async with async_session() as session:
-            ids = await UserRepo.all_ids(session)
-
-        sent = 0
-        failed = 0
-        for tg_id in ids:
-            ok = await self.send_to_user(bot, tg_id, giveaway)
-            if ok:
-                sent += 1
-            else:
-                failed += 1
-            await asyncio.sleep(0.05)
-        return sent, failed
+            current = await session.get(Giveaway, giveaway.id)
+            if current:
+                current.post_message_id = sent.message_id
+                await session.commit()
+        return sent.message_id
 
     async def notify_if_needed(self, bot: Bot, tg_id: int) -> bool:
-        giveaway = await self.get_active()
-        if not giveaway:
-            return False
-        return await self.send_to_user(bot, tg_id, giveaway)
+        # Giveaways are published to their public channel, never mass-DMed.
+        return False
 
     async def join(self, tg_id: int) -> tuple[bool, int]:
         async with async_session() as session:
