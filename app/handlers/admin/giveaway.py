@@ -27,6 +27,7 @@ def _menu(active: bool) -> InlineKeyboardMarkup:
     if active:
         rows += [
             [InlineKeyboardButton(text="📊 Faol konkursni ko‘rish", callback_data="adg:view")],
+            [InlineKeyboardButton(text="📤 Konkursni kanalga qayta yuborish", callback_data="adg:republish")],
             [InlineKeyboardButton(text="👥 Qatnashchilar", callback_data="adg:participants")],
             [InlineKeyboardButton(text="🎲 Tasodifiy g‘olib", callback_data="adg:winner:random")],
             [InlineKeyboardButton(text="✍️ Qo‘lda g‘olib tanlash", callback_data="adg:winner:manual")],
@@ -353,6 +354,22 @@ async def giveaway_publish(cb: CallbackQuery, state: FSMContext):
         f"Majburiy kanallar: <b>{len(data.get('giveaway_required_channels', []))}</b>",
         reply_markup=admin_back_kb())
 
+
+@router.callback_query(F.data == "adg:republish")
+async def giveaway_republish(cb: CallbackQuery):
+    giveaway = await giveaway_service.get_active()
+    if not giveaway:
+        await cb.answer("Faol konkurs yo‘q.", show_alert=True)
+        return
+    try:
+        message_id = await giveaway_service.publish(cb.bot, giveaway)
+        await safe_answer(cb, "Konkurs kanalga qayta yuborildi!")
+        await cb.message.answer(
+            f"📤 <b>Konkurs qayta joylandi.</b>\nYangi post ID: <code>{message_id}</code>",
+            reply_markup=admin_back_kb()
+        )
+    except Exception as exc:
+        await cb.answer(f"Qayta yuborilmadi: {str(exc)[:180]}", show_alert=True)
 
 @router.callback_query(F.data == "adg:view")
 async def giveaway_view(cb: CallbackQuery):
