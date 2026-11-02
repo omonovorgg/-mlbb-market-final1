@@ -12,12 +12,16 @@ from app.database.repository import GiveawayRepo
 logger = logging.getLogger(__name__)
 
 
-def giveaway_kb(participant_count: int, joined: bool = False) -> InlineKeyboardMarkup:
-    label = "✅ SIZ QATNASHYAPSIZ" if joined else "🎁 QATNASHISH"
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=label, callback_data="giveaway:join")],
-        [InlineKeyboardButton(text=f"👥 Qatnashchilar: {participant_count}", callback_data="giveaway:count")],
-    ])
+def giveaway_kb(participant_count: int, bot_username: str = "", giveaway_id: int = 0, joined: bool = False) -> InlineKeyboardMarkup:
+    if joined:
+        button = InlineKeyboardButton(
+            text=f"👥 QATNASHCHILAR: {participant_count}",
+            callback_data=f"giveaway:count:{giveaway_id}"
+        )
+    else:
+        url = f"https://t.me/{bot_username}?start=gw_{giveaway_id}" if bot_username else "https://t.me/"
+        button = InlineKeyboardButton(text="🎁 QATNASHISH", url=url)
+    return InlineKeyboardMarkup(inline_keyboard=[[button]])
 
 
 class GiveawayService:
@@ -58,7 +62,8 @@ class GiveawayService:
         if not target:
             raise ValueError("Konkurs kanali belgilanmagan")
         count = await self.participant_count(giveaway.id)
-        markup = giveaway_kb(count)
+        me = await bot.get_me()
+        markup = giveaway_kb(count, me.username or "", giveaway.id)
         if giveaway.video_file_id and giveaway.media_type == "photo":
             sent = await bot.send_photo(target, giveaway.video_file_id, caption=giveaway.text or None, reply_markup=markup)
         elif giveaway.video_file_id and giveaway.media_type == "video":
@@ -78,15 +83,32 @@ class GiveawayService:
         # Giveaways are published to their public channel, never mass-DMed.
         return False
 
-    async def join(self, tg_id: int) -> tuple[bool, int]:
+    async def join(self, tg_id: int, giveaway_id: int | None = None) -> tuple[bool, int, Giveaway | None]:
         async with async_session() as session:
-            giveaway = await GiveawayRepo.get_active(session)
+            if giveaway_id:
+                giveaway = await session.get(Giveaway, giveaway_id)
+                if giveaway and not giveaway.active:
+                    giveaway = None
+            else:
+                giveaway = await GiveawayRepo.get_active(session)
             if not giveaway:
-                return False, 0
+                return False, 0, None
             added = await GiveawayRepo.add_participant(session, giveaway.id, tg_id)
             count = await GiveawayRepo.participant_count(session, giveaway.id)
             await session.commit()
-            return added, count
+            return added, count, giveaway
+
+    async def refresh_channel_button(self, bot: Bot, giveaway: Giveaway, count: int) -> None:
+        if not giveaway.target_channel_id or not giveaway.post_message_id:
+            return
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=int(giveaway.target_channel_id),
+                message_id=giveaway.post_message_id,
+                reply_markup=giveaway_kb(count, joined=True, giveaway_id=giveaway.id),
+            )
+        except Exception:
+            logger.exception("Could not update giveaway channel button")
 
 
 giveaway_service = GiveawayService()
