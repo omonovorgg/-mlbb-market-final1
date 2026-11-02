@@ -37,12 +37,22 @@ async def deposit_amount(msg:Message,state:FSMContext):
 @router.message(StateFilter(BalanceStates.waiting_receipt),F.photo)
 async def receipt_photo(msg:Message,state:FSMContext):
     ext=(await state.get_data()).get("payment_external_id")
-    if not ext or not await payment_service.submit_receipt(ext,msg.photo[-1].file_id,"photo"):await msg.answer("❌ Chekni qabul qilib bo'lmadi.");return
+    fid=msg.photo[-1].file_id
+    try:
+        from app.services.media_archive_service import media_archive_service
+        await media_archive_service.archive_message(msg.bot,msg,"payment_receipt",ext)
+    except Exception: pass
+    if not ext or not await payment_service.submit_receipt(ext,fid,"photo"):await msg.answer("❌ Chekni qabul qilib bo'lmadi.");return
     await state.clear();await _notify_admins(msg,ext);await msg.answer("✅ Chek qabul qilindi. Admin tasdiqlashini kuting.\n⏱ 30 daqiqadan so'ng avtomatik balansga qo'shiladi.")
 @router.message(StateFilter(BalanceStates.waiting_receipt),F.document)
 async def receipt_document(msg:Message,state:FSMContext):
     ext=(await state.get_data()).get("payment_external_id")
-    if not ext or not await payment_service.submit_receipt(ext,msg.document.file_id,"document"):await msg.answer("❌ Chekni qabul qilib bo'lmadi.");return
+    fid=msg.document.file_id
+    try:
+        from app.services.media_archive_service import media_archive_service
+        await media_archive_service.archive_message(msg.bot,msg,"payment_receipt",ext)
+    except Exception: pass
+    if not ext or not await payment_service.submit_receipt(ext,fid,"document"):await msg.answer("❌ Chekni qabul qilib bo'lmadi.");return
     await state.clear();await _notify_admins(msg,ext);await msg.answer("✅ Chek qabul qilindi. Admin tasdiqlashini kuting.\n⏱ 30 daqiqadan so'ng avtomatik balansga qo'shiladi.")
 async def _notify_admins(msg:Message,ext:str):
     ctx=await payment_service.get_payment_context(ext)
