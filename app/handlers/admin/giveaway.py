@@ -115,7 +115,7 @@ async def giveaway_media(msg: Message, state: FSMContext):
     else:
         media_type = "video"
         file_id = msg.video.file_id
-    caption = (msg.html_text or msg.html_caption or "").strip()
+    caption = (msg.html_text or "").strip()
     if not caption:
         await msg.answer("❌ Rasm yoki videoga caption matnini qo‘shib qayta yuboring.")
         return
