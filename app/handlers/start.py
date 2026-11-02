@@ -8,6 +8,7 @@ from app.config import config
 from app.database.db import async_session
 from app.database.repository import AdminRepo
 from app.services.giveaway_service import giveaway_service
+from app.database.models import Giveaway
 
 router = Router(name="start")
 
@@ -86,6 +87,12 @@ async def _send_start(msg: Message, state: FSMContext):
 
 @router.message(CommandStart())
 async def cmd_start(msg: Message, state: FSMContext):
+    parts = (msg.text or "").split(maxsplit=1)
+    payload = parts[1].strip() if len(parts) > 1 else ""
+    if payload.startswith("gw_") and payload[3:].isdigit():
+        await state.clear()
+        await _send_giveaway_join(msg, int(payload[3:]))
+        return
     await _send_start(msg, state)
 
 
@@ -121,3 +128,64 @@ async def cmd_menu(msg: Message, state: FSMContext):
         )
         return
     await msg.answer("🏠 Asosiy menyu", reply_markup=main_menu_kb(is_admin=admin))
+
+
+
+async def _send_giveaway_join(msg: Message, giveaway_id: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    async with async_session() as session:
+        giveaway = await session.get(Giveaway, giveaway_id)
+    if not giveaway or not giveaway.active:
+        await msg.answer("❌ Bu konkurs yakunlangan yoki topilmadi.")
+        return
+    missing = await giveaway_service.missing_channels(msg.bot, msg.from_user.id, giveaway)
+    if missing:
+        rows = []
+        for channel in missing:
+            try:
+                chat = await msg.bot.get_chat(channel)
+                username = getattr(chat, "username", None)
+                if username:
+                    url = f"https://t.me/{username}"
+                else:
+                    invite = await msg.bot.create_chat_invite_link(chat.id)
+                    url = invite.invite_link
+                rows.append([InlineKeyboardButton(text=f"📢 {chat.title or channel}", url=url)])
+            except Exception:
+                continue
+        rows.append([InlineKeyboardButton(text="✅ OBUNANI TEKSHIRISH", callback_data=f"giveaway:verify:{giveaway_id}")])
+        await msg.answer(
+            "🔒 <b>Konkursda qatnashish uchun quyidagi kanallarga obuna bo‘ling.</b>\n\n"
+            "Obuna bo‘lgach, «OBUNANI TEKSHIRISH» tugmasini bosing.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+    added, count, current = await giveaway_service.join(msg.from_user.id, giveaway_id)
+    if not current:
+        await msg.answer("❌ Konkurs faol emas.")
+        return
+    await giveaway_service.refresh_channel_button(msg.bot, current, count)
+    await msg.answer("🎉 <b>Siz konkurs qatnashchisisiz!</b>" if added else "✅ <b>Siz allaqachon konkurs qatnashchisisiz!</b>")
+
+
+@router.callback_query(F.data.startswith("giveaway:verify:"))
+async def verify_giveaway_deeplink(cb: CallbackQuery):
+    giveaway_id = int(cb.data.rsplit(":", 1)[1])
+    async with async_session() as session:
+        giveaway = await session.get(Giveaway, giveaway_id)
+    if not giveaway or not giveaway.active:
+        await cb.answer("Konkurs yakunlangan.", show_alert=True)
+        return
+    missing = await giveaway_service.missing_channels(cb.bot, cb.from_user.id, giveaway)
+    if missing:
+        await cb.answer("Hali barcha kanallarga obuna bo‘lmagansiz.", show_alert=True)
+        return
+    added, count, current = await giveaway_service.join(cb.from_user.id, giveaway_id)
+    if not current:
+        await cb.answer("Konkurs faol emas.", show_alert=True)
+        return
+    await giveaway_service.refresh_channel_button(cb.bot, current, count)
+    await cb.message.answer("🎉 <b>Siz konkurs qatnashchisisiz!</b>" if added else "✅ <b>Siz allaqachon konkurs qatnashchisisiz!</b>")
+    await cb.answer("Obuna tasdiqlandi!")
+
+
