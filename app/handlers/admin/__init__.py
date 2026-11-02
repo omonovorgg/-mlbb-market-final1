@@ -15,6 +15,7 @@ from app.handlers.admin.logs import router as logs_router
 from app.handlers.admin.admins import router as admins_router
 from app.handlers.admin.cards import router as cards_router
 from app.handlers.admin.giveaway import router as giveaway_router
+from app.handlers.admin.server import router as server_router
 
 
 admin_router = Router(name="admin")
@@ -34,3 +35,4 @@ admin_router.include_router(logs_router)
 admin_router.include_router(admins_router)
 admin_router.include_router(cards_router)
 admin_router.include_router(giveaway_router)
+admin_router.include_router(server_router)
