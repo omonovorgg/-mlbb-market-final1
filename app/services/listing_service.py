@@ -34,8 +34,12 @@ class ListingService:
         """media = [(type, file_id), ...]"""
         async with async_session() as session:
             await MediaRepo.delete_for_listing(session, listing_id)
+            from app.services.media_archive_service import media_archive_service
+            from app.services.channel_service import channel_service
+            bot = channel_service._bot
             for idx, (mtype, fid) in enumerate(media):
-                await MediaRepo.add(session, listing_id, mtype, fid, idx)
+                archived_id = await media_archive_service.archive_file(bot, fid, mtype) if bot else None
+                await MediaRepo.add(session, listing_id, mtype, archived_id or fid, idx)
             await session.commit()
 
     async def get(self, listing_id: int) -> Optional[Listing]:
