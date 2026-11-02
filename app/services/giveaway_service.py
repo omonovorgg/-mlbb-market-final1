@@ -13,15 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 def giveaway_kb(participant_count: int, bot_username: str = "", giveaway_id: int = 0, joined: bool = False) -> InlineKeyboardMarkup:
-    if joined:
-        button = InlineKeyboardButton(
-            text=f"👥 QATNASHCHILAR: {participant_count}",
-            callback_data=f"giveaway:count:{giveaway_id}"
+    url = f"https://t.me/{bot_username}?start=gw_{giveaway_id}" if bot_username else "https://t.me/"
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=f"🎁 QATNASHISH  •  👥 {participant_count}",
+            url=url
         )
-    else:
-        url = f"https://t.me/{bot_username}?start=gw_{giveaway_id}" if bot_username else "https://t.me/"
-        button = InlineKeyboardButton(text="🎁 QATNASHISH", url=url)
-    return InlineKeyboardMarkup(inline_keyboard=[[button]])
+    ]])
 
 
 class GiveawayService:
@@ -105,7 +103,7 @@ class GiveawayService:
             await bot.edit_message_reply_markup(
                 chat_id=int(giveaway.target_channel_id),
                 message_id=giveaway.post_message_id,
-                reply_markup=giveaway_kb(count, joined=True, giveaway_id=giveaway.id),
+                reply_markup=giveaway_kb(count, (await bot.get_me()).username or "", giveaway.id),
             )
         except Exception:
             logger.exception("Could not update giveaway channel button")
