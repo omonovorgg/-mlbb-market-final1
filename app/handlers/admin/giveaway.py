@@ -139,6 +139,7 @@ async def giveaway_media_invalid(msg: Message):
 async def giveaway_channels_menu(cb: CallbackQuery, state: FSMContext):
     if not await state.get_data():
         await state.update_data(giveaway_required_channels=[])
+    await state.set_state(AdminStates.giveaway_text)
     await safe_edit(cb, "📋 <b>Majburiy obuna kanallari</b>\nKonkurs yaratishda kerakli kanallarni belgilang yoki yangisini qo‘shing.",
                     reply_markup=await _setup_kb(state))
     await safe_answer(cb)
