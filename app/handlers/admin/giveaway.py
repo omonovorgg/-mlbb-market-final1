@@ -1,4 +1,6 @@
 import asyncio
+import random
+from sqlalchemy import select
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -8,7 +10,7 @@ from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, Teleg
 from app.filters.admin_filter import AdminFilter
 from app.states.states import AdminStates
 from app.database.db import async_session
-from app.database.models import Giveaway
+from app.database.models import Giveaway, GiveawayParticipant
 from app.database.repository import GiveawayRepo, UserRepo
 from app.keyboards.admin_kb import admin_back_kb
 from app.utils.security import safe_edit, safe_answer
@@ -24,6 +26,9 @@ def _menu(active: bool) -> InlineKeyboardMarkup:
     rows = []
     if active:
         rows.append([InlineKeyboardButton(text="📊 Faol konkursni ko‘rish", callback_data="adg:view")])
+        rows.append([InlineKeyboardButton(text="👥 Qatnashchilar", callback_data="adg:participants")])
+        rows.append([InlineKeyboardButton(text="🎲 Tasodifiy g‘olib", callback_data="adg:winner:random")])
+        rows.append([InlineKeyboardButton(text="✍️ Qo‘lda g‘olib tanlash", callback_data="adg:winner:manual")])
         rows.append([InlineKeyboardButton(text="⛔ Konkursni tugatish", callback_data="adg:stop")])
     rows.append([InlineKeyboardButton(text="➕ Yangi konkurs yaratish", callback_data="adg:create")])
     rows.append([InlineKeyboardButton(text="⬅️ Admin panel", callback_data="ad:panel")])
@@ -157,3 +162,47 @@ async def giveaway_stop(cb: CallbackQuery):
         await session.commit()
     await safe_answer(cb, "Konkurs tugatildi.")
     await cb.message.answer("⛔ Konkurs tugatildi.", reply_markup=admin_back_kb())
+
+@router.callback_query(F.data == "adg:participants")
+async def giveaway_participants(cb: CallbackQuery):
+    async with async_session() as session:
+        g = await GiveawayRepo.get_active(session)
+        if not g:
+            await cb.answer("Faol konkurs yo‘q.", show_alert=True); return
+        q = await session.execute(select(GiveawayParticipant).where(GiveawayParticipant.giveaway_id == g.id).order_by(GiveawayParticipant.joined_at.desc()).limit(100))
+        users = q.scalars().all()
+        count = await GiveawayRepo.participant_count(session, g.id)
+    lines = [f"👥 QATNASHCHILAR: {count}", ""]
+    lines += [f"• <code>{p.telegram_id}</code>" for p in users]
+    if count > len(users): lines.append(f"... yana {count-len(users)} ta")
+    await safe_edit(cb, "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Orqaga", callback_data="ad:giveaway")]]))
+    await safe_answer(cb)
+
+@router.callback_query(F.data == "adg:winner:random")
+async def giveaway_random_winner(cb: CallbackQuery):
+    async with async_session() as session:
+        g = await GiveawayRepo.get_active(session)
+        if not g: await cb.answer("Faol konkurs yo‘q.", show_alert=True); return
+        q = await session.execute(select(GiveawayParticipant.telegram_id).where(GiveawayParticipant.giveaway_id == g.id))
+        ids = [x[0] for x in q.all()]
+    if not ids: await cb.answer("Qatnashchilar yo‘q.", show_alert=True); return
+    winner = random.SystemRandom().choice(ids)
+    await cb.message.answer(f"🎲 <b>TASODIFIY TANLOV</b>\n🏆 G‘olib: <a href=\"tg://user?id={winner}\">{winner}</a>\n👥 Jami: {len(ids)}")
+    await safe_answer(cb, "G‘olib tanlandi.")
+
+@router.callback_query(F.data == "adg:winner:manual")
+async def giveaway_manual_start(cb: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminStates.giveaway_manual_winner)
+    await safe_edit(cb, "G‘olib qilinadigan qatnashchining Telegram ID sini yuboring.", reply_markup=admin_back_kb())
+    await safe_answer(cb)
+
+@router.message(AdminStates.giveaway_manual_winner, F.text)
+async def giveaway_manual_finish(msg: Message, state: FSMContext):
+    if not msg.text.strip().isdigit(): await msg.answer("Telegram ID raqamini yuboring."); return
+    tg_id = int(msg.text.strip())
+    async with async_session() as session:
+        g = await GiveawayRepo.get_active(session)
+        valid = bool(g and await GiveawayRepo.is_participant(session, g.id, tg_id))
+    if not valid: await msg.answer("Bu ID faol konkurs qatnashchisi emas."); return
+    await state.clear()
+    await msg.answer(f"✍️ <b>ADMIN TANLOVI</b>\n🏆 Tanlangan qatnashchi: <a href=\"tg://user?id={tg_id}\">{tg_id}</a>")
