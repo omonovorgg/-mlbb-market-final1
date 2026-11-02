@@ -16,7 +16,7 @@ def giveaway_kb(participant_count: int, bot_username: str = "", giveaway_id: int
     url = f"https://t.me/{bot_username}?start=gw_{giveaway_id}" if bot_username else "https://t.me/"
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
-            text=f"🎁 QATNASHISH  •  👥 QATNASHCHILAR: {participant_count}",
+            text=f"🎁 QATNASHISH ({participant_count:04d})",
             url=url
         )
     ]])
