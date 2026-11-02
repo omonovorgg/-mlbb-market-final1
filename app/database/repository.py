@@ -398,8 +398,8 @@ class GiveawayRepo:
         return r.scalar_one_or_none()
 
     @staticmethod
-    async def create(session: AsyncSession, video_file_id: str, text: str) -> Giveaway:
-        g = Giveaway(video_file_id=video_file_id, text=text, active=True)
+    async def create(session: AsyncSession, video_file_id: str, text: str, media_type: str = "video", target_channel_id: str = "", required_channels: str = "[]") -> Giveaway:
+        g = Giveaway(video_file_id=video_file_id, text=text, media_type=media_type, target_channel_id=target_channel_id or None, required_channels=required_channels, active=True)
         session.add(g)
         await session.flush()
         return g
