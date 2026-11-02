@@ -31,15 +31,11 @@ async def giveaway_join(cb: CallbackQuery):
         await cb.answer("Avval barcha majburiy kanallarga obuna bo‘ling.", show_alert=True)
         return
 
-    added, count = await giveaway_service.join(cb.from_user.id)
-    if not count:
+    added, count, current = await giveaway_service.join(cb.from_user.id, giveaway.id)
+    if not current:
         await cb.answer("❌ Hozir faol konkurs yo‘q.", show_alert=True)
         return
-    if cb.message:
-        try:
-            await cb.message.edit_reply_markup(reply_markup=giveaway_kb(count, joined=True))
-        except Exception:
-            pass
+    await giveaway_service.refresh_channel_button(cb.bot, current, count)
     await cb.answer("🎉 Konkursga muvaffaqiyatli qo‘shildingiz!" if added else "✅ Siz allaqachon qatnashyapsiz.")
 
 
@@ -53,7 +49,7 @@ async def giveaway_count(cb: CallbackQuery):
     joined = await giveaway_service.user_joined(giveaway.id, cb.from_user.id)
     if cb.message:
         try:
-            await cb.message.edit_reply_markup(reply_markup=giveaway_kb(count, joined=joined))
+            await cb.message.edit_reply_markup(reply_markup=giveaway_kb(count, (await cb.bot.get_me()).username or "", giveaway.id))
         except Exception:
             pass
     await cb.answer(f"👥 Hozir {count} ta real qatnashchi bor.")
