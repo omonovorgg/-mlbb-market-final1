@@ -22,7 +22,8 @@ async def giveaway_join(cb: CallbackQuery):
                 if username:
                     rows.append([InlineKeyboardButton(text=f"📢 {chat.title or username}", url=f"https://t.me/{username}")])
                 else:
-                    rows.append([InlineKeyboardButton(text=f"📢 {channel}", url=f"https://t.me/{str(channel).replace('@','')}")])
+                    invite = await cb.bot.create_chat_invite_link(chat.id)
+                    rows.append([InlineKeyboardButton(text=f"📢 {chat.title or channel}", url=invite.invite_link)])
             except Exception:
                 pass
         rows.append([InlineKeyboardButton(text="✅ OBUNANI TEKSHIRISH", callback_data="giveaway:join")])
