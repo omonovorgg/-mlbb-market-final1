@@ -63,6 +63,7 @@ async def _setup_kb(state: FSMContext) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text=f"{mark} {channel}", callback_data=f"adg:toggle:{i}")])
     rows += [
         [InlineKeyboardButton(text="➕ Yangi kanal qo‘shish", callback_data="adg:channel:add")],
+        [InlineKeyboardButton(text="⏭ Majburiy kanallarsiz davom etish", callback_data="adg:skip:channels")],
         [InlineKeyboardButton(text="📢 Konkurs kanalini belgilash", callback_data="adg:target")],
         [InlineKeyboardButton(text="👁 Preview", callback_data="adg:preview")],
         [InlineKeyboardButton(text="🚀 Konkursni kanalga joylash", callback_data="adg:publish")],
@@ -229,6 +230,13 @@ async def giveaway_toggle_channel(cb: CallbackQuery, state: FSMContext):
     await safe_answer(cb)
 
 
+@router.callback_query(F.data == "adg:skip:channels", AdminStates.giveaway_text)
+async def giveaway_skip_channels(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(giveaway_required_channels=[])
+    await safe_edit(cb, await _setup_text(state), reply_markup=await _setup_kb(state))
+    await safe_answer(cb, "Majburiy kanallarsiz davom etiladi.")
+
+
 @router.callback_query(F.data == "adg:channel:add")
 async def giveaway_add_channel_start(cb: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.giveaway_required_add)
@@ -353,10 +361,12 @@ async def giveaway_view(cb: CallbackQuery):
         await cb.answer("Faol konkurs yo‘q.", show_alert=True)
         return
     count = await giveaway_service.participant_count(giveaway.id)
-    if giveaway.media_type == "photo":
-        await cb.message.answer_photo(giveaway.video_file_id, caption=giveaway.text, reply_markup=giveaway_kb(count))
-    else:
-        await cb.message.answer_video(giveaway.video_file_id, caption=giveaway.text, reply_markup=giveaway_kb(count))
+    if giveaway.video_file_id and giveaway.media_type == "photo":
+        await cb.message.answer_photo(giveaway.video_file_id, caption=giveaway.text or None, reply_markup=giveaway_kb(count))
+    elif giveaway.video_file_id and giveaway.media_type == "video":
+        await cb.message.answer_video(giveaway.video_file_id, caption=giveaway.text or None, reply_markup=giveaway_kb(count))
+    elif giveaway.text:
+        await cb.message.answer(giveaway.text, reply_markup=giveaway_kb(count))
     await safe_answer(cb)
 
 
