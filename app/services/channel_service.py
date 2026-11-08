@@ -87,15 +87,13 @@ class ChannelService:
                     else:
                         album.append(InputMediaPhoto(media=item.telegram_file_id, caption=caption))
                 sent = await self._bot.send_media_group(target, album)
-                # Telegram Bot API does not allow reply_markup on media groups.
-                # Keep every photo/video in one album and put only the purchase
-                # action directly below it as a reply (no separate details post).
+                # Attach the inline keyboard to the first album item after
+                # sending the album. This keeps the listing as one album/post.
                 if kb:
-                    await self._bot.send_message(
-                        target,
-                        "🛒 Xarid qilish:",
+                    await self._bot.edit_message_reply_markup(
+                        chat_id=target,
+                        message_id=sent[0].message_id,
                         reply_markup=kb,
-                        reply_parameters=ReplyParameters(message_id=sent[0].message_id),
                     )
                 return sent[0].message_id
 
@@ -216,11 +214,10 @@ class ChannelService:
                         album.append(InputMediaPhoto(media=item.telegram_file_id, caption=caption))
                 sent = await self._bot.send_media_group(target, album)
                 if kb:
-                    await self._bot.send_message(
-                        target,
-                        "🛒 Xarid qilish:",
+                    await self._bot.edit_message_reply_markup(
+                        chat_id=target,
+                        message_id=sent[0].message_id,
                         reply_markup=kb,
-                        reply_parameters=ReplyParameters(message_id=sent[0].message_id),
                     )
             else:
                 return False
