@@ -67,31 +67,39 @@ class ChannelService:
             if not media:
                 msg = await self._bot.send_message(target, text, reply_markup=kb)
                 return msg.message_id
-            if len(media) == 1 and media[0].type == "video":
-                msg = await self._bot.send_video(target, media[0].telegram_file_id,
-                                                 caption=text, reply_markup=kb)
+
+            if len(media) == 1:
+                item = media[0]
+                if item.type == "video":
+                    msg = await self._bot.send_video(target, item.telegram_file_id,
+                                                     caption=text, reply_markup=kb)
+                else:
+                    msg = await self._bot.send_photo(target, item.telegram_file_id,
+                                                     caption=text, reply_markup=kb)
                 return msg.message_id
-            if len(media) == 1 and media[0].type == "photo":
-                msg = await self._bot.send_photo(target, media[0].telegram_file_id,
-                                                 caption=text, reply_markup=kb)
-                return msg.message_id
-            if len(media) == 2 and all(m.type == "photo" for m in media):
-                # Telegram albums do not support inline keyboards. Publish the
-                # first photo as the main ad with its buy button; attach the
-                # second photo as a media reply (no extra "details" text post).
-                main_msg = await self._bot.send_photo(
-                    target, media[0].telegram_file_id, caption=text, reply_markup=kb
-                )
-                try:
-                    await self._bot.send_photo(
+
+            if 2 <= len(media) <= 10:
+                album = []
+                for index, item in enumerate(media):
+                    caption = text if index == 0 else None
+                    if item.type == "video":
+                        album.append(InputMediaVideo(media=item.telegram_file_id, caption=caption))
+                    else:
+                        album.append(InputMediaPhoto(media=item.telegram_file_id, caption=caption))
+                sent = await self._bot.send_media_group(target, album)
+                # Telegram Bot API does not allow reply_markup on media groups.
+                # Keep every photo/video in one album and put only the purchase
+                # action directly below it as a reply (no separate details post).
+                if kb:
+                    await self._bot.send_message(
                         target,
-                        media[1].telegram_file_id,
-                        reply_parameters=ReplyParameters(message_id=main_msg.message_id),
+                        "🛒 Xarid qilish:",
+                        reply_markup=kb,
+                        reply_parameters=ReplyParameters(message_id=sent[0].message_id),
                     )
-                except Exception:
-                    logger.exception("Second listing photo could not be sent")
-                return main_msg.message_id
-            logger.warning("Unsupported media combination")
+                return sent[0].message_id
+
+            logger.warning("Telegram albums support 2-10 items; got %s", len(media))
             return None
         except Exception:
             logger.exception("channel publish error")
@@ -192,22 +200,28 @@ class ChannelService:
         try:
             if not media:
                 await self._bot.send_message(target, text, reply_markup=kb)
-            elif len(media) == 1 and media[0].type == "video":
-                await self._bot.send_video(target, media[0].telegram_file_id, caption=text, reply_markup=kb)
-            elif len(media) == 1 and media[0].type == "photo":
-                await self._bot.send_photo(target, media[0].telegram_file_id, caption=text, reply_markup=kb)
-            elif len(media) == 2 and all(m.type == "photo" for m in media):
-                main_msg = await self._bot.send_photo(
-                    target, media[0].telegram_file_id, caption=text, reply_markup=kb
-                )
-                try:
-                    await self._bot.send_photo(
+            elif len(media) == 1:
+                item = media[0]
+                if item.type == "video":
+                    await self._bot.send_video(target, item.telegram_file_id, caption=text, reply_markup=kb)
+                else:
+                    await self._bot.send_photo(target, item.telegram_file_id, caption=text, reply_markup=kb)
+            elif 2 <= len(media) <= 10:
+                album = []
+                for index, item in enumerate(media):
+                    caption = text if index == 0 else None
+                    if item.type == "video":
+                        album.append(InputMediaVideo(media=item.telegram_file_id, caption=caption))
+                    else:
+                        album.append(InputMediaPhoto(media=item.telegram_file_id, caption=caption))
+                sent = await self._bot.send_media_group(target, album)
+                if kb:
+                    await self._bot.send_message(
                         target,
-                        media[1].telegram_file_id,
-                        reply_parameters=ReplyParameters(message_id=main_msg.message_id),
+                        "🛒 Xarid qilish:",
+                        reply_markup=kb,
+                        reply_parameters=ReplyParameters(message_id=sent[0].message_id),
                     )
-                except Exception:
-                    logger.exception("Second TOP photo could not be sent")
             else:
                 return False
             return True
