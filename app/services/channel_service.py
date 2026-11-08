@@ -76,14 +76,21 @@ class ChannelService:
                                                  caption=text, reply_markup=kb)
                 return msg.message_id
             if len(media) == 2 and all(m.type == "photo" for m in media):
-                group = [
-                    InputMediaPhoto(media=m.telegram_file_id, caption=text if i == 0 else "")
-                    for i, m in enumerate(media)
-                ]
-                msgs = await self._bot.send_media_group(target, group)
-                # Send inline buttons as separate reply message
-                await self._bot.send_message(target, "⬇️ Batafsil ma'lumot", reply_markup=kb)
-                return msgs[0].message_id
+                # Telegram albums do not support inline keyboards. Publish the
+                # first photo as the main ad with its buy button; attach the
+                # second photo as a media reply (no extra "details" text post).
+                main_msg = await self._bot.send_photo(
+                    target, media[0].telegram_file_id, caption=text, reply_markup=kb
+                )
+                try:
+                    await self._bot.send_photo(
+                        target,
+                        media[1].telegram_file_id,
+                        reply_parameters=ReplyParameters(message_id=main_msg.message_id),
+                    )
+                except Exception:
+                    logger.exception("Second listing photo could not be sent")
+                return main_msg.message_id
             logger.warning("Unsupported media combination")
             return None
         except Exception:
@@ -190,12 +197,17 @@ class ChannelService:
             elif len(media) == 1 and media[0].type == "photo":
                 await self._bot.send_photo(target, media[0].telegram_file_id, caption=text, reply_markup=kb)
             elif len(media) == 2 and all(m.type == "photo" for m in media):
-                group = [
-                    InputMediaPhoto(media=m.telegram_file_id, caption=text if i == 0 else "")
-                    for i, m in enumerate(media)
-                ]
-                msgs = await self._bot.send_media_group(target, group)
-                await self._bot.send_message(target, "⬇️ Batafsil ma'lumot", reply_markup=kb)
+                main_msg = await self._bot.send_photo(
+                    target, media[0].telegram_file_id, caption=text, reply_markup=kb
+                )
+                try:
+                    await self._bot.send_photo(
+                        target,
+                        media[1].telegram_file_id,
+                        reply_parameters=ReplyParameters(message_id=main_msg.message_id),
+                    )
+                except Exception:
+                    logger.exception("Second TOP photo could not be sent")
             else:
                 return False
             return True
@@ -289,11 +301,18 @@ class ChannelService:
             return False
 
     def _seller_kb(self, owner, deal_type: str = "SALE") -> Optional[InlineKeyboardMarkup]:
-        if not owner or not owner.username:
+        if not owner:
             return None
+        seller_url = (
+            f"https://t.me/{owner.username}"
+            if owner.username
+            else f"tg://user?id={owner.telegram_id}"
+        )
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=("🔄 ALMASHAMAN" if deal_type == "EXCHANGE" else "🛒 SOTIB OLAMAN"),
-                                 url=f"https://t.me/{owner.username}")
+            InlineKeyboardButton(
+                text=("🔄 ALMASHAMAN" if deal_type == "EXCHANGE" else "🛒 SOTIB OLAMAN"),
+                url=seller_url,
+            )
         ]])
 
 
